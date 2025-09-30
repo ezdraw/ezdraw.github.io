@@ -287,6 +287,10 @@ javascript:(function() {
         btn.style.cursor = 'pointer';
         return btn;
     }
+
+    function github() {
+        window.location.href = 'https://github.com/ColaCaine/ez-write/'
+    }
     
     // Color Picker
     var colorPicker = document.createElement('input');
@@ -335,6 +339,7 @@ javascript:(function() {
     toolContainer.appendChild(createButton('Import from JSON', importJSON));
     toolContainer.appendChild(createButton('Export as JPEG (White BG)', exportJPEG));
     toolContainer.appendChild(createButton('Remove Tools', removeTools));
+    toolContainer.appendChild(createbutton('Github', github));
 
     document.body.appendChild(toolContainer);
 
