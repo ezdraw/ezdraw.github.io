@@ -1,2 +1,354 @@
 # ez-write
 Simple Drawing utility with a few preset thicknesses, custom color picker, clear drawing feature, eraser, and export options. - Runs in web browser and is made for its bookmarklet version, for annotating web-pages.
+
+## Adding the bookmarklet
+
+
+Go to raw and copy/drag into your bookmarks bar. You can also copy the text and paste it into a custom bookmark/bookmarklet, no need to add 'javascript:' its already included.
+
+You can also copy from below.
+
+```
+javascript:(function() {
+    // --- Setup Canvas and Context ---
+    var canvas = document.createElement('canvas');
+    canvas.id = 'web-highlighter-canvas';
+    canvas.style.position = 'fixed';
+    canvas.style.top = '0';
+    canvas.style.left = '0';
+    canvas.style.zIndex = '9999';
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    document.body.appendChild(canvas);
+
+    var ctx = canvas.getContext('2d');
+    // Anti-aliasing enhancements and line smoothing properties
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    
+    // --- State Variables ---
+    var defaultLineWidth = 4;
+    var currentLineWidth = defaultLineWidth; // New variable to track current line thickness
+    var currentColor = '#FF0000'; // Default color is RED
+    var isErasing = false;
+    var drawing = false;
+    var drawingHistory = []; 
+    var currentSegment = null; 
+    var points = []; 
+
+    // Define the 5 different line thickness levels
+    var thicknessLevels = [2, 4, 8, 16, 24]; // Thinner to thicker lines
+    
+    // Function to set the current drawing context style
+    function updateContextStyle() {
+        ctx.strokeStyle = currentColor;
+        ctx.lineWidth = isErasing ? 20 : currentLineWidth; // Eraser is fixed at 20px
+        ctx.globalCompositeOperation = isErasing ? 'destination-out' : 'source-over';
+    }
+
+    // --- Core Smoothing Logic: Draw a line segment using quadratic curves ---
+    function drawSmoothedSegment(segment) {
+        if (!segment.points || segment.points.length < 3) {
+             // Handle segments with 1 or 2 points (e.g., a dot or a tiny line)
+             if (segment.points && segment.points.length > 0) {
+                 ctx.beginPath();
+                 ctx.strokeStyle = segment.color || 'black';
+                 ctx.lineWidth = segment.isErasing ? 20 : (segment.thickness || defaultLineWidth);
+                 ctx.globalCompositeOperation = segment.isErasing ? 'destination-out' : 'source-over';
+                 ctx.moveTo(segment.points[0].x, segment.points[0].y);
+                 ctx.lineTo(segment.points[segment.points.length - 1].x, segment.points[segment.points.length - 1].y);
+                 ctx.stroke();
+             }
+             return; 
+        }
+
+        ctx.strokeStyle = segment.color || 'black';
+        // Use the thickness stored in the history segment
+        ctx.lineWidth = segment.isErasing ? 20 : (segment.thickness || defaultLineWidth); 
+        ctx.globalCompositeOperation = segment.isErasing ? 'destination-out' : 'source-over';
+        
+        ctx.beginPath();
+        ctx.moveTo(segment.points[0].x, segment.points[0].y);
+
+        for (var i = 1; i < segment.points.length - 1; i++) {
+            var p1 = segment.points[i];
+            var p2 = segment.points[i + 1];
+            
+            var midPoint = {
+                x: (p1.x + p2.x) / 2,
+                y: (p1.y + p2.y) / 2
+            };
+            
+            ctx.quadraticCurveTo(p1.x, p1.y, midPoint.x, midPoint.y);
+        }
+        
+        ctx.lineTo(segment.points[segment.points.length - 1].x, segment.points[segment.points.length - 1].y);
+        ctx.stroke();
+    }
+    
+    // Function to draw all segments from history
+    function redraw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawingHistory.forEach(drawSmoothedSegment);
+        
+        // Reset context to current drawing state
+        updateContextStyle();
+    }
+
+    // --- Mouse/Pen Event Handlers ---
+    canvas.addEventListener('mousedown', function(e) {
+        drawing = true;
+        points = [];
+        
+        // Include the current line thickness in the new segment
+        currentSegment = {
+            color: currentColor,
+            isErasing: isErasing,
+            thickness: currentLineWidth, // Store the thickness!
+            points: []
+        };
+        drawingHistory.push(currentSegment);
+        
+        // Set context style based on current state
+        updateContextStyle();
+
+        points.push({ x: e.clientX, y: e.clientY });
+        currentSegment.points.push({ x: e.clientX, y: e.clientY });
+        
+        ctx.beginPath();
+        ctx.moveTo(e.clientX, e.clientY);
+    });
+
+    canvas.addEventListener('mousemove', function(e) {
+        if (!drawing) return;
+        
+        points.push({ x: e.clientX, y: e.clientY });
+        currentSegment.points.push({ x: e.clientX, y: e.clientY });
+        
+        if (points.length > 2) {
+            redraw(); 
+        } else {
+             ctx.lineTo(e.clientX, e.clientY);
+             ctx.stroke();
+        }
+    });
+
+    canvas.addEventListener('mouseup', function() {
+        if (!drawing) return;
+        drawing = false;
+        points = [];
+        redraw();
+    });
+
+    canvas.addEventListener('mouseout', function() {
+        if (!drawing) return;
+        drawing = false;
+        points = [];
+        redraw();
+    });
+    
+    // --- Utility and UI Functions ---
+    
+    function downloadFile(data, filename, type) {
+        var file = new Blob([data], { type: type });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(file);
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
+    
+    function clearDrawing() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawingHistory = [];
+    }
+
+    function exportJSON() {
+        var jsonState = JSON.stringify({
+            url: window.location.href,
+            timestamp: new Date().toISOString(),
+            width: canvas.width,
+            height: canvas.height,
+            history: drawingHistory
+        });
+        downloadFile(jsonState, 'web-drawing-state.json', 'application/json');
+    }
+    
+    function importJSON() {
+        var input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.style.display = 'none';
+        input.onchange = function(e) {
+            var file = e.target.files[0];
+            if (!file) return;
+            var reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    var data = JSON.parse(event.target.result);
+                    if (data && data.history) {
+                        drawingHistory = data.history;
+                        redraw();
+                        alert('Drawing imported successfully!');
+                    } else {
+                        throw new Error('Invalid JSON structure.');
+                    }
+                } catch (error) {
+                    alert('Error importing drawing: ' + error.message);
+                }
+                document.body.removeChild(input);
+            };
+            reader.readAsText(file);
+        };
+        document.body.appendChild(input);
+        input.click();
+    }
+    
+    function exportJPEG() {
+        var tempCanvas = document.createElement('canvas');
+        tempCanvas.width = canvas.width;
+        tempCanvas.height = canvas.height;
+        var tempCtx = tempCanvas.getContext('2d');
+        tempCtx.fillStyle = 'white';
+        tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+        tempCtx.drawImage(canvas, 0, 0);
+
+        try {
+            var imageDataURL = tempCanvas.toDataURL('image/jpeg', 0.9);
+            var link = document.createElement('a');
+            link.href = imageDataURL;
+            link.download = 'web-drawing-screenshot.jpeg';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (e) {
+            alert('Export failed. Note: Exporting to JPEG may fail on cross-origin content.');
+        }
+    }
+
+    function removeTools() {
+        if (document.getElementById('web-highlighter-canvas')) {
+            document.body.removeChild(canvas);
+        }
+        if (document.getElementById('tool-container')) {
+            document.body.removeChild(toolContainer);
+        }
+    }
+    
+    function setThickness(thickness) {
+        currentLineWidth = thickness;
+        isErasing = false; // Turn off eraser when changing thickness
+        
+        // Reset eraser button visual state
+        eraserButton.textContent = 'Eraser Mode';
+        eraserButton.style.backgroundColor = '#eee';
+        colorPicker.style.display = 'inline-block'; 
+
+        // Update context style
+        updateContextStyle();
+        
+        // Visually highlight the active thickness button
+        document.querySelectorAll('#thickness-buttons button').forEach(btn => {
+            btn.style.border = '1px solid #aaa';
+        });
+        document.getElementById('thickness-btn-' + thickness).style.border = '2px solid blue';
+    }
+    
+    function toggleEraser() {
+        isErasing = !isErasing;
+        if (isErasing) {
+            eraserButton.textContent = 'Draw Mode (' + currentLineWidth + 'px)';
+            eraserButton.style.backgroundColor = '#f00';
+            colorPicker.style.display = 'none'; 
+        } else {
+            eraserButton.textContent = 'Eraser Mode';
+            eraserButton.style.backgroundColor = '#eee';
+            colorPicker.style.display = 'inline-block'; 
+        }
+        // Update context style
+        updateContextStyle();
+    }
+
+
+    // --- Create and Style UI Elements ---
+    var toolContainer = document.createElement('div');
+    toolContainer.id = 'tool-container';
+    toolContainer.style.position = 'fixed';
+    toolContainer.style.top = '10px';
+    toolContainer.style.right = '10px';
+    toolContainer.style.zIndex = '10000';
+    toolContainer.style.padding = '10px';
+    toolContainer.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+    toolContainer.style.border = '1px solid #ccc';
+    toolContainer.style.borderRadius = '5px';
+    toolContainer.style.display = 'flex';
+    toolContainer.style.gap = '5px';
+    toolContainer.style.flexDirection = 'column';
+    
+    function createButton(text, onClick) {
+        var btn = document.createElement('button');
+        btn.textContent = text;
+        btn.onclick = onClick;
+        btn.style.padding = '5px 10px';
+        btn.style.border = '1px solid #aaa';
+        btn.style.borderRadius = '3px';
+        btn.style.cursor = 'pointer';
+        return btn;
+    }
+    
+    // Color Picker
+    var colorPicker = document.createElement('input');
+    colorPicker.type = 'color';
+    colorPicker.value = currentColor;
+    colorPicker.onchange = function() {
+        currentColor = colorPicker.value;
+        isErasing = false;
+        eraserButton.textContent = 'Eraser Mode';
+        eraserButton.style.backgroundColor = '#eee';
+        updateContextStyle();
+    };
+
+    // Thickness Buttons Container
+    var thicknessContainer = document.createElement('div');
+    thicknessContainer.id = 'thickness-buttons';
+    thicknessContainer.style.display = 'flex';
+    thicknessContainer.style.gap = '2px';
+    thicknessContainer.style.marginBottom = '5px';
+    
+    // Create the 5 thickness buttons
+    thicknessLevels.forEach(thickness => {
+        var btn = document.createElement('button');
+        btn.id = 'thickness-btn-' + thickness;
+        btn.textContent = thickness + 'px';
+        btn.style.width = '35px';
+        btn.style.height = '25px';
+        btn.style.padding = '0';
+        btn.style.fontSize = '10px';
+        btn.style.cursor = 'pointer';
+        btn.onclick = function() {
+            setThickness(thickness);
+        };
+        thicknessContainer.appendChild(btn);
+    });
+    
+    // Append all elements
+    toolContainer.appendChild(thicknessContainer);
+    toolContainer.appendChild(colorPicker);
+    
+    var eraserButton = createButton('Eraser Mode', toggleEraser);
+    toolContainer.appendChild(eraserButton);
+
+    toolContainer.appendChild(createButton('Clear Drawing', clearDrawing));
+    toolContainer.appendChild(createButton('Export as JSON', exportJSON));
+    toolContainer.appendChild(createButton('Import from JSON', importJSON));
+    toolContainer.appendChild(createButton('Export as JPEG (White BG)', exportJPEG));
+    toolContainer.appendChild(createButton('Remove Tools', removeTools));
+
+    document.body.appendChild(toolContainer);
+
+    // Initial Setup: Set the initial thickness and highlight the corresponding button
+    setThickness(defaultLineWidth); 
+})();
+
+```
