@@ -444,17 +444,6 @@ javascript:(function() {
             alert('Export failed. Note: Exporting to JPEG may fail on cross-origin content.');
         }
     }
-    function removeTools() {
-        if (document.getElementById('web-highlighter-canvas')) {
-            document.body.removeChild(canvas);
-        }
-        if (document.getElementById('tool-container')) {
-            document.body.removeChild(toolContainer);
-        }
-        if (document.getElementById('drawing-circle-cursor')) {
-            document.body.removeChild(circleCursor);
-        }
-    }
     function setThickness(thickness) {
         currentLineWidth = thickness;
         isErasing = false;
@@ -467,6 +456,9 @@ javascript:(function() {
             btn.style.border = '1px solid #aaa';
         });
         document.getElementById('thickness-btn-' + thickness).style.border = '2px solid blue';
+        // --- Force cache redraw to avoid hidden drawings on tool change ---
+        cacheDirty = true;
+        scheduleRedraw();
     }
     function toggleEraser() {
         isErasing = !isErasing;
@@ -481,6 +473,9 @@ javascript:(function() {
         }
         updateContextStyle();
         updateCursorSize();
+        // --- Force cache redraw to avoid hidden drawings on tool change ---
+        cacheDirty = true;
+        scheduleRedraw();
     }
 
     // --- Create and Style UI Elements ---
@@ -536,6 +531,9 @@ javascript:(function() {
         eraserButton.style.backgroundColor = '#eee';
         updateContextStyle();
         updateCursorSize();
+        // --- Force cache redraw to avoid hidden drawings on color change ---
+        cacheDirty = true;
+        scheduleRedraw();
     };
 
     // Thickness Buttons Container
@@ -577,7 +575,6 @@ javascript:(function() {
     toolContainer.appendChild(createButton('Export as JSON', exportJSON));
     toolContainer.appendChild(createButton('Import from JSON', importJSON));
     toolContainer.appendChild(createButton('Export as JPEG (White BG)', exportJPEG));
-    toolContainer.appendChild(createButton('Remove Tools', removeTools));
 
     document.body.appendChild(toolContainer);
 
