@@ -1,10 +1,24 @@
 <!doctype html>
 <html>
 <head>
-<link rel="icon" type="image/png" href="https://colacaine.github.io/ez-write/ez.png">
+<link rel="icon" type="image/png" href="ez.png">
+<link rel="manifest" href="manifest.webmanifest">
 <title>Ez-Draw</title>
+    <meta name="theme-color" content="#2196f3">
 </head>
 <body>
+<script>
+// Register service worker for PWA offline support
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+        navigator.serviceWorker.register('sw.js').then(function(registration) {
+            // Registration successful
+        }, function(err) {
+            // Registration failed
+        });
+    });
+}
+</script>
 <script>
 javascript:(function () {
     // --- Virtual canvas settings ---
