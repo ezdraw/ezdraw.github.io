@@ -1,11 +1,4 @@
-<!doctype html>
-<html>
-<head>
-<title>Ez-Draw</title>
-</head>
-<body>
-<script>
-    javascript:(function() {
+javascript:(function() {
     // --- Setup Canvas and Context ---
     var canvas = document.createElement('canvas');
     canvas.id = 'web-highlighter-canvas';
@@ -34,9 +27,10 @@
         );
         canvas.width = docWidth;
         canvas.height = docHeight;
+        cacheCanvas.width = docWidth;
+        cacheCanvas.height = docHeight;
     }
 
-    updateCanvasSize();
     document.body.appendChild(canvas);
 
     var ctx = canvas.getContext('2d');
@@ -60,6 +54,27 @@
 
     var thicknessLevels = [2, 4, 8, 16, 24];
 
+    // --- Smoothing/Aim-Assist Setting ---
+    var assistLevel = 2;
+    var assistLabels = ["None", "Low", "Medium", "High"];
+
+    // --- Performance: Raster Cache for Drawing History ---
+    var cacheCanvas = document.createElement('canvas');
+    cacheCanvas.width = canvas.width;
+    cacheCanvas.height = canvas.height;
+    var cacheCtx = cacheCanvas.getContext('2d');
+    var cacheDirty = true;
+
+    function updateCacheCanvas() {
+        cacheCanvas.width = canvas.width;
+        cacheCanvas.height = canvas.height;
+        cacheCtx.clearRect(0, 0, cacheCanvas.width, cacheCanvas.height);
+        for (var i = 0; i < drawingHistory.length - (drawing ? 1 : 0); i++) {
+            drawSmoothLineSegment(cacheCtx, drawingHistory[i]);
+        }
+        cacheDirty = false;
+    }
+
     // --- Custom Cursor ---
     var circleCursor = document.createElement('div');
     circleCursor.id = 'drawing-circle-cursor';
@@ -82,47 +97,115 @@
         circleCursor.style.border = isErasing ? '2px dashed #f00' : '2px solid #444';
     }
 
-    window.addEventListener('resize', updateCanvasSize);
+    window.addEventListener('resize', function() {
+        updateCanvasSize();
+        cacheDirty = true;
+        scheduleRedraw();
+    });
+
+    // --- Smoothing/Aim Assist Algorithm ---
+    function smoothPoints(points, level) {
+        if (level === 0 || points.length < 3) return points.slice();
+        const settings = [
+            {window: 0, strength: 0},
+            {window: 2, strength: 0.4},
+            {window: 4, strength: 0.7},
+            {window: 8, strength: 0.85},
+        ][level];
+        const w = settings.window, s = settings.strength;
+        let out = [];
+        for (let i = 0; i < points.length; i++) {
+            let sx = 0, sy = 0, count = 0;
+            for (let j = -w; j <= w; j++) {
+                let idx = Math.max(0, Math.min(points.length - 1, i + j));
+                sx += points[idx].x;
+                sy += points[idx].y;
+                count++;
+            }
+            let avgx = sx / count, avgy = sy / count;
+            out.push({
+                x: points[i].x * (1 - s) + avgx * s,
+                y: points[i].y * (1 - s) + avgy * s
+            });
+        }
+        return out;
+    }
 
     // --- Drawing Logic ---
-    function drawSmoothedSegment(segment) {
-        if (!segment.points || segment.points.length < 3) {
-            if (segment.points && segment.points.length > 0) {
-                ctx.beginPath();
-                ctx.strokeStyle = segment.color || 'black';
-                ctx.lineWidth = segment.isErasing ? 20 : (segment.thickness || defaultLineWidth);
-                ctx.globalCompositeOperation = segment.isErasing ? 'destination-out' : 'source-over';
-                ctx.moveTo(segment.points[0].x, segment.points[0].y);
-                ctx.lineTo(segment.points[segment.points.length - 1].x, segment.points[segment.points.length - 1].y);
-                ctx.stroke();
-            }
+    function lerp(a, b, t) { return a + (b - a) * t; }
+
+    function drawSmoothLineSegment(ctx, segment) {
+        if (!segment.points || segment.points.length === 0) return;
+        ctx.save();
+        ctx.globalCompositeOperation = segment.isErasing ? 'destination-out' : 'source-over';
+        ctx.strokeStyle = segment.color || 'black';
+        ctx.fillStyle = segment.color || 'black';
+        ctx.lineWidth = segment.isErasing ? 20 : (segment.thickness || defaultLineWidth);
+        let rad = (segment.isErasing ? 20 : (segment.thickness || defaultLineWidth)) / 2;
+        let step = Math.max(0.1, rad * 0.18);
+
+        let assist = typeof segment.assistLevel === "number" ? segment.assistLevel : assistLevel;
+        let pts = smoothPoints(segment.points, assist);
+
+        if (pts.length === 1) {
+            ctx.beginPath();
+            ctx.arc(pts[0].x, pts[0].y, rad, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.restore();
             return;
         }
 
-        ctx.strokeStyle = segment.color || 'black';
-        ctx.lineWidth = segment.isErasing ? 20 : (segment.thickness || defaultLineWidth);
-        ctx.globalCompositeOperation = segment.isErasing ? 'destination-out' : 'source-over';
-
-        ctx.beginPath();
-        ctx.moveTo(segment.points[0].x, segment.points[0].y);
-
-        for (var i = 1; i < segment.points.length - 1; i++) {
-            var p1 = segment.points[i];
-            var p2 = segment.points[i + 1];
-            var midPoint = {
-                x: (p1.x + p2.x) / 2,
-                y: (p1.y + p2.y) / 2
+        let smoothPath = [];
+        smoothPath.push(pts[0]);
+        for (let i = 1; i < pts.length - 1; i++) {
+            let mid = {
+                x: (pts[i].x + pts[i + 1].x) / 2,
+                y: (pts[i].y + pts[i + 1].y) / 2
             };
-            ctx.quadraticCurveTo(p1.x, p1.y, midPoint.x, midPoint.y);
+            smoothPath.push(pts[i]);
+            smoothPath.push(mid);
         }
-        ctx.lineTo(segment.points[segment.points.length - 1].x, segment.points[segment.points.length - 1].y);
-        ctx.stroke();
+        smoothPath.push(pts[pts.length - 1]);
+
+        for (let i = 0; i < smoothPath.length - 1; i++) {
+            let p0 = smoothPath[i];
+            let p1 = smoothPath[i + 1];
+            let dx = p1.x - p0.x, dy = p1.y - p0.y;
+            let dist = Math.sqrt(dx * dx + dy * dy);
+            let steps = Math.max(2, Math.ceil(dist / step));
+            for (let j = 0; j < steps; j++) {
+                let t = j / steps;
+                let x = lerp(p0.x, p1.x, t);
+                let y = lerp(p0.y, p1.y, t);
+                ctx.beginPath();
+                ctx.arc(x, y, rad, 0, 2 * Math.PI);
+                ctx.fill();
+            }
+        }
+        let lp = smoothPath[smoothPath.length - 1];
+        ctx.beginPath();
+        ctx.arc(lp.x, lp.y, rad, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    // --- Efficient Redraw ---
+    var redrawScheduled = false;
+    function scheduleRedraw() {
+        if (!redrawScheduled) {
+            redrawScheduled = true;
+            requestAnimationFrame(redraw);
+        }
     }
 
     function redraw() {
-        updateCanvasSize();
+        redrawScheduled = false;
+        if (cacheDirty) updateCacheCanvas();
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        drawingHistory.forEach(drawSmoothedSegment);
+        ctx.drawImage(cacheCanvas, 0, 0);
+        if (drawing && drawingHistory.length) {
+            drawSmoothLineSegment(ctx, drawingHistory[drawingHistory.length - 1]);
+        }
         updateContextStyle();
     }
 
@@ -135,20 +218,21 @@
     // --- Undo/Redo Functions ---
     function pushToUndo() {
         undoStack.push(JSON.stringify(drawingHistory));
-        // Limit undoStack to 100 for memory
         if (undoStack.length > 100) undoStack.shift();
     }
     function undo() {
         if (undoStack.length === 0) return;
         redoStack.push(JSON.stringify(drawingHistory));
         drawingHistory = JSON.parse(undoStack.pop());
-        redraw();
+        cacheDirty = true;
+        scheduleRedraw();
     }
     function redo() {
         if (redoStack.length === 0) return;
         undoStack.push(JSON.stringify(drawingHistory));
         drawingHistory = JSON.parse(redoStack.pop());
-        redraw();
+        cacheDirty = true;
+        scheduleRedraw();
     }
 
     // --- Mouse/Pen Event Handlers ---
@@ -170,16 +254,14 @@
         if (toolContainer.contains(e.target) || e.button !== 0) return;
         drawing = true;
         points = [];
-
-        // Save history for undo before every new segment
         pushToUndo();
         redoStack = [];
-
         currentSegment = {
             color: currentColor,
             isErasing: isErasing,
             thickness: currentLineWidth,
-            points: []
+            points: [],
+            assistLevel: assistLevel
         };
         drawingHistory.push(currentSegment);
 
@@ -189,8 +271,7 @@
         points.push({ x: pos.x, y: pos.y });
         currentSegment.points.push({ x: pos.x, y: pos.y });
 
-        ctx.beginPath();
-        ctx.moveTo(pos.x, pos.y);
+        scheduleRedraw();
 
         circleCursor.style.display = 'none';
         e.preventDefault();
@@ -201,12 +282,8 @@
         var pos = getPointerPos(e);
         points.push({ x: pos.x, y: pos.y });
         currentSegment.points.push({ x: pos.x, y: pos.y });
-        if (points.length > 2) {
-            redraw();
-        } else {
-            ctx.lineTo(pos.x, pos.y);
-            ctx.stroke();
-        }
+
+        scheduleRedraw();
         e.preventDefault();
     });
 
@@ -214,7 +291,8 @@
         if (!drawing) return;
         drawing = false;
         points = [];
-        redraw();
+        cacheDirty = true;
+        scheduleRedraw();
         circleCursor.style.display = 'block';
         e.preventDefault();
     });
@@ -223,7 +301,8 @@
         if (!drawing) return;
         drawing = false;
         points = [];
-        redraw();
+        cacheDirty = true;
+        scheduleRedraw();
         circleCursor.style.display = 'block';
     });
 
@@ -232,7 +311,6 @@
         if (toolContainer.contains(e.target)) return;
         drawing = true;
         points = [];
-        // Save history for undo before every new segment
         pushToUndo();
         redoStack = [];
         var pos = getPointerPos(e);
@@ -241,7 +319,8 @@
             color: currentColor,
             isErasing: isErasing,
             thickness: currentLineWidth,
-            points: []
+            points: [],
+            assistLevel: assistLevel
         };
         drawingHistory.push(currentSegment);
 
@@ -249,9 +328,7 @@
         points.push({ x: pos.x, y: pos.y });
         currentSegment.points.push({ x: pos.x, y: pos.y });
 
-        ctx.beginPath();
-        ctx.moveTo(pos.x, pos.y);
-
+        scheduleRedraw();
         circleCursor.style.display = 'none';
         e.preventDefault();
     }, {passive: false});
@@ -261,13 +338,7 @@
         var pos = getPointerPos(e);
         points.push({ x: pos.x, y: pos.y });
         currentSegment.points.push({ x: pos.x, y: pos.y });
-
-        if (points.length > 2) {
-            redraw();
-        } else {
-            ctx.lineTo(pos.x, pos.y);
-            ctx.stroke();
-        }
+        scheduleRedraw();
         e.preventDefault();
     }, {passive: false});
 
@@ -275,7 +346,8 @@
         if (!drawing) return;
         drawing = false;
         points = [];
-        redraw();
+        cacheDirty = true;
+        scheduleRedraw();
         circleCursor.style.display = 'block';
         e.preventDefault();
     }, {passive: false});
@@ -306,6 +378,8 @@
         drawingHistory = [];
         undoStack = [];
         redoStack = [];
+        cacheDirty = true;
+        scheduleRedraw();
     }
     function exportJSON() {
         var jsonState = JSON.stringify({
@@ -333,7 +407,8 @@
                         pushToUndo();
                         drawingHistory = data.history;
                         redoStack = [];
-                        redraw();
+                        cacheDirty = true;
+                        scheduleRedraw();
                         alert('Drawing imported successfully!');
                     } else {
                         throw new Error('Invalid JSON structure.');
@@ -367,17 +442,6 @@
             document.body.removeChild(link);
         } catch (e) {
             alert('Export failed. Note: Exporting to JPEG may fail on cross-origin content.');
-        }
-    }
-    function removeTools() {
-        if (document.getElementById('web-highlighter-canvas')) {
-            document.body.removeChild(canvas);
-        }
-        if (document.getElementById('tool-container')) {
-            document.body.removeChild(toolContainer);
-        }
-        if (document.getElementById('drawing-circle-cursor')) {
-            document.body.removeChild(circleCursor);
         }
     }
     function setThickness(thickness) {
@@ -434,6 +498,22 @@
         return btn;
     }
 
+    // Smoothing/Aim Assist Select
+    var assistSelect = document.createElement('select');
+    assistSelect.title = "Drawing Smoothing/Aim Assist";
+    assistLabels.forEach((label, idx) => {
+        var opt = document.createElement('option');
+        opt.value = idx;
+        opt.textContent = "Assist: " + label;
+        assistSelect.appendChild(opt);
+    });
+    assistSelect.value = assistLevel;
+    assistSelect.onchange = function() {
+        assistLevel = parseInt(this.value, 10);
+    };
+    assistSelect.style.marginBottom = '6px';
+    assistSelect.style.fontSize = '13px';
+
     // Color Picker
     var colorPicker = document.createElement('input');
     colorPicker.type = 'color';
@@ -473,6 +553,7 @@
     var undoBtn = createButton('Undo (Ctrl+Z)', undo);
     var redoBtn = createButton('Redo (Ctrl+Y/Ctrl+Shift+Z)', redo);
 
+    toolContainer.appendChild(assistSelect);
     toolContainer.appendChild(thicknessContainer);
     toolContainer.appendChild(colorPicker);
     toolContainer.appendChild(undoBtn);
@@ -485,7 +566,6 @@
     toolContainer.appendChild(createButton('Export as JSON', exportJSON));
     toolContainer.appendChild(createButton('Import from JSON', importJSON));
     toolContainer.appendChild(createButton('Export as JPEG (White BG)', exportJPEG));
-    toolContainer.appendChild(createButton('Remove Tools', removeTools));
 
     document.body.appendChild(toolContainer);
 
@@ -505,6 +585,3 @@
         }
     });
 })();
-</script>
-</body>
-</html>
