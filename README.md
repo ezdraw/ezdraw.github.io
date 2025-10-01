@@ -7,7 +7,10 @@ The cloud software comes packed with amazing state of the art CaineTech smoothin
 
 ![web-drawing-screenshot (3)](https://github.com/user-attachments/assets/51f7dbb5-1114-476b-b74a-3d2d4cd640a9)
 
-
+## Try the native drawing WebApp
+[Click here to use the Native Drawing app!](https://colacaine.github.io/ez-write)
+Users on Chromium based browsers can install it as a PWA (Progressive Web App)
+For offline use, you can download the HTML file as it has all dependency's kept within that one file, and works completely offline IF downloaded.
 
 ## Adding the bookmarklet
 
