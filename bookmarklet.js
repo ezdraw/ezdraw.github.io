@@ -2,142 +2,368 @@ javascript:(function() {
     // --- Setup Canvas and Context ---
     var canvas = document.createElement('canvas');
     canvas.id = 'web-highlighter-canvas';
-    canvas.style.position = 'fixed';
+    canvas.style.position = 'absolute';
     canvas.style.top = '0';
     canvas.style.left = '0';
     canvas.style.zIndex = '9999';
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    canvas.style.pointerEvents = 'none';
+
+    function updateCanvasSize() {
+        var docWidth = Math.max(
+            document.body.scrollWidth,
+            document.documentElement.scrollWidth,
+            document.body.offsetWidth,
+            document.documentElement.offsetWidth,
+            document.body.clientWidth,
+            document.documentElement.clientWidth
+        );
+        var docHeight = Math.max(
+            document.body.scrollHeight,
+            document.documentElement.scrollHeight,
+            document.body.offsetHeight,
+            document.documentElement.offsetHeight,
+            document.body.clientHeight,
+            document.documentElement.clientHeight
+        );
+        canvas.width = docWidth;
+        canvas.height = docHeight;
+        cacheCanvas.width = docWidth;
+        cacheCanvas.height = docHeight;
+    }
+
     document.body.appendChild(canvas);
 
     var ctx = canvas.getContext('2d');
-    // Anti-aliasing enhancements and line smoothing properties
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    
+
     // --- State Variables ---
     var defaultLineWidth = 4;
-    var currentLineWidth = defaultLineWidth; // New variable to track current line thickness
-    var currentColor = '#FF0000'; // Default color is RED
+    var currentLineWidth = defaultLineWidth;
+    var currentColor = '#FF0000';
     var isErasing = false;
     var drawing = false;
-    var drawingHistory = []; 
-    var currentSegment = null; 
-    var points = []; 
+    var drawingHistory = [];
+    var currentSegment = null;
+    var points = [];
+    var lastPointerPos = { x: 0, y: 0 };
 
-    // Define the 5 different line thickness levels
-    var thicknessLevels = [2, 4, 8, 16, 24]; // Thinner to thicker lines
-    
-    // Function to set the current drawing context style
+    // Undo/Redo Stacks
+    var undoStack = [];
+    var redoStack = [];
+
+    var thicknessLevels = [2, 4, 8, 16, 24];
+
+    // --- Smoothing/Aim-Assist Setting ---
+    var assistLevel = 2;
+    var assistLabels = ["None", "Low", "Medium", "High"];
+
+    // --- Performance: Raster Cache for Drawing History ---
+    var cacheCanvas = document.createElement('canvas');
+    cacheCanvas.width = canvas.width;
+    cacheCanvas.height = canvas.height;
+    var cacheCtx = cacheCanvas.getContext('2d');
+    var cacheDirty = true;
+
+    function updateCacheCanvas() {
+        cacheCanvas.width = canvas.width;
+        cacheCanvas.height = canvas.height;
+        cacheCtx.clearRect(0, 0, cacheCanvas.width, cacheCanvas.height);
+        for (var i = 0; i < drawingHistory.length - (drawing ? 1 : 0); i++) {
+            drawSmoothLineSegment(cacheCtx, drawingHistory[i]);
+        }
+        cacheDirty = false;
+    }
+
+    // --- Custom Cursor ---
+    var circleCursor = document.createElement('div');
+    circleCursor.id = 'drawing-circle-cursor';
+    circleCursor.style.position = 'fixed';
+    circleCursor.style.pointerEvents = 'none';
+    circleCursor.style.zIndex = '10001';
+    circleCursor.style.width = currentLineWidth + 'px';
+    circleCursor.style.height = currentLineWidth + 'px';
+    circleCursor.style.border = '2px solid #444';
+    circleCursor.style.borderRadius = '50%';
+    circleCursor.style.transform = 'translate(-50%, -50%)';
+    circleCursor.style.background = 'transparent';
+    circleCursor.style.display = 'none';
+    document.body.appendChild(circleCursor);
+
+    function updateCursorSize() {
+        var px = isErasing ? 20 : currentLineWidth;
+        circleCursor.style.width = px + 'px';
+        circleCursor.style.height = px + 'px';
+        circleCursor.style.border = isErasing ? '2px dashed #f00' : '2px solid #444';
+    }
+
+    window.addEventListener('resize', function() {
+        updateCanvasSize();
+        cacheDirty = true;
+        scheduleRedraw();
+    });
+
+    // --- Smoothing/Aim Assist Algorithm ---
+    function smoothPoints(points, level) {
+        if (level === 0 || points.length < 3) return points.slice();
+        const settings = [
+            {window: 0, strength: 0},
+            {window: 2, strength: 0.4},
+            {window: 4, strength: 0.7},
+            {window: 8, strength: 0.85},
+        ][level];
+        const w = settings.window, s = settings.strength;
+        let out = [];
+        for (let i = 0; i < points.length; i++) {
+            let sx = 0, sy = 0, count = 0;
+            for (let j = -w; j <= w; j++) {
+                let idx = Math.max(0, Math.min(points.length - 1, i + j));
+                sx += points[idx].x;
+                sy += points[idx].y;
+                count++;
+            }
+            let avgx = sx / count, avgy = sy / count;
+            out.push({
+                x: points[i].x * (1 - s) + avgx * s,
+                y: points[i].y * (1 - s) + avgy * s
+            });
+        }
+        return out;
+    }
+
+    // --- Drawing Logic ---
+    function lerp(a, b, t) { return a + (b - a) * t; }
+
+    function drawSmoothLineSegment(ctx, segment) {
+        if (!segment.points || segment.points.length === 0) return;
+        ctx.save();
+        ctx.globalCompositeOperation = segment.isErasing ? 'destination-out' : 'source-over';
+        ctx.strokeStyle = segment.color || 'black';
+        ctx.fillStyle = segment.color || 'black';
+        ctx.lineWidth = segment.isErasing ? 20 : (segment.thickness || defaultLineWidth);
+        let rad = (segment.isErasing ? 20 : (segment.thickness || defaultLineWidth)) / 2;
+        let step = Math.max(0.1, rad * 0.18);
+
+        let assist = typeof segment.assistLevel === "number" ? segment.assistLevel : assistLevel;
+        let pts = smoothPoints(segment.points, assist);
+
+        if (pts.length === 1) {
+            ctx.beginPath();
+            ctx.arc(pts[0].x, pts[0].y, rad, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.restore();
+            return;
+        }
+
+        let smoothPath = [];
+        smoothPath.push(pts[0]);
+        for (let i = 1; i < pts.length - 1; i++) {
+            let mid = {
+                x: (pts[i].x + pts[i + 1].x) / 2,
+                y: (pts[i].y + pts[i + 1].y) / 2
+            };
+            smoothPath.push(pts[i]);
+            smoothPath.push(mid);
+        }
+        smoothPath.push(pts[pts.length - 1]);
+
+        for (let i = 0; i < smoothPath.length - 1; i++) {
+            let p0 = smoothPath[i];
+            let p1 = smoothPath[i + 1];
+            let dx = p1.x - p0.x, dy = p1.y - p0.y;
+            let dist = Math.sqrt(dx * dx + dy * dy);
+            let steps = Math.max(2, Math.ceil(dist / step));
+            for (let j = 0; j < steps; j++) {
+                let t = j / steps;
+                let x = lerp(p0.x, p1.x, t);
+                let y = lerp(p0.y, p1.y, t);
+                ctx.beginPath();
+                ctx.arc(x, y, rad, 0, 2 * Math.PI);
+                ctx.fill();
+            }
+        }
+        let lp = smoothPath[smoothPath.length - 1];
+        ctx.beginPath();
+        ctx.arc(lp.x, lp.y, rad, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    // --- Efficient Redraw ---
+    var redrawScheduled = false;
+    function scheduleRedraw() {
+        if (!redrawScheduled) {
+            redrawScheduled = true;
+            requestAnimationFrame(redraw);
+        }
+    }
+
+    function redraw() {
+        redrawScheduled = false;
+        if (cacheDirty) updateCacheCanvas();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(cacheCanvas, 0, 0);
+        if (drawing && drawingHistory.length) {
+            drawSmoothLineSegment(ctx, drawingHistory[drawingHistory.length - 1]);
+        }
+        updateContextStyle();
+    }
+
     function updateContextStyle() {
         ctx.strokeStyle = currentColor;
-        ctx.lineWidth = isErasing ? 20 : currentLineWidth; // Eraser is fixed at 20px
+        ctx.lineWidth = isErasing ? 20 : currentLineWidth;
         ctx.globalCompositeOperation = isErasing ? 'destination-out' : 'source-over';
     }
 
-    // --- Core Smoothing Logic: Draw a line segment using quadratic curves ---
-    function drawSmoothedSegment(segment) {
-        if (!segment.points || segment.points.length < 3) {
-             // Handle segments with 1 or 2 points (e.g., a dot or a tiny line)
-             if (segment.points && segment.points.length > 0) {
-                 ctx.beginPath();
-                 ctx.strokeStyle = segment.color || 'black';
-                 ctx.lineWidth = segment.isErasing ? 20 : (segment.thickness || defaultLineWidth);
-                 ctx.globalCompositeOperation = segment.isErasing ? 'destination-out' : 'source-over';
-                 ctx.moveTo(segment.points[0].x, segment.points[0].y);
-                 ctx.lineTo(segment.points[segment.points.length - 1].x, segment.points[segment.points.length - 1].y);
-                 ctx.stroke();
-             }
-             return; 
-        }
-
-        ctx.strokeStyle = segment.color || 'black';
-        // Use the thickness stored in the history segment
-        ctx.lineWidth = segment.isErasing ? 20 : (segment.thickness || defaultLineWidth); 
-        ctx.globalCompositeOperation = segment.isErasing ? 'destination-out' : 'source-over';
-        
-        ctx.beginPath();
-        ctx.moveTo(segment.points[0].x, segment.points[0].y);
-
-        for (var i = 1; i < segment.points.length - 1; i++) {
-            var p1 = segment.points[i];
-            var p2 = segment.points[i + 1];
-            
-            var midPoint = {
-                x: (p1.x + p2.x) / 2,
-                y: (p1.y + p2.y) / 2
-            };
-            
-            ctx.quadraticCurveTo(p1.x, p1.y, midPoint.x, midPoint.y);
-        }
-        
-        ctx.lineTo(segment.points[segment.points.length - 1].x, segment.points[segment.points.length - 1].y);
-        ctx.stroke();
+    // --- Undo/Redo Functions ---
+    function pushToUndo() {
+        undoStack.push(JSON.stringify(drawingHistory));
+        if (undoStack.length > 100) undoStack.shift();
     }
-    
-    // Function to draw all segments from history
-    function redraw() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        drawingHistory.forEach(drawSmoothedSegment);
-        
-        // Reset context to current drawing state
-        updateContextStyle();
+    function undo() {
+        if (undoStack.length === 0) return;
+        redoStack.push(JSON.stringify(drawingHistory));
+        drawingHistory = JSON.parse(undoStack.pop());
+        cacheDirty = true;
+        scheduleRedraw();
+    }
+    function redo() {
+        if (redoStack.length === 0) return;
+        undoStack.push(JSON.stringify(drawingHistory));
+        drawingHistory = JSON.parse(redoStack.pop());
+        cacheDirty = true;
+        scheduleRedraw();
     }
 
     // --- Mouse/Pen Event Handlers ---
-    canvas.addEventListener('mousedown', function(e) {
+    function getPointerPos(e) {
+        var x = (e.touches ? e.touches[0].clientX : e.clientX) + window.scrollX;
+        var y = (e.touches ? e.touches[0].clientY : e.clientY) + window.scrollY;
+        return { x, y };
+    }
+
+    document.addEventListener('mousemove', function(e) {
+        lastPointerPos = { x: e.clientX, y: e.clientY };
+        circleCursor.style.display =
+            e.target === canvas || !toolContainer.contains(e.target) ? 'block' : 'none';
+        circleCursor.style.left = e.clientX + 'px';
+        circleCursor.style.top = e.clientY + 'px';
+    });
+
+    document.addEventListener('mousedown', function(e) {
+        if (toolContainer.contains(e.target) || e.button !== 0) return;
         drawing = true;
         points = [];
-        
-        // Include the current line thickness in the new segment
+        pushToUndo();
+        redoStack = [];
         currentSegment = {
             color: currentColor,
             isErasing: isErasing,
-            thickness: currentLineWidth, // Store the thickness!
-            points: []
+            thickness: currentLineWidth,
+            points: [],
+            assistLevel: assistLevel
         };
         drawingHistory.push(currentSegment);
-        
-        // Set context style based on current state
+
         updateContextStyle();
 
-        points.push({ x: e.clientX, y: e.clientY });
-        currentSegment.points.push({ x: e.clientX, y: e.clientY });
-        
-        ctx.beginPath();
-        ctx.moveTo(e.clientX, e.clientY);
+        var pos = getPointerPos(e);
+        points.push({ x: pos.x, y: pos.y });
+        currentSegment.points.push({ x: pos.x, y: pos.y });
+
+        scheduleRedraw();
+
+        circleCursor.style.display = 'none';
+        e.preventDefault();
     });
 
-    canvas.addEventListener('mousemove', function(e) {
+    document.addEventListener('mousemove', function(e) {
         if (!drawing) return;
-        
-        points.push({ x: e.clientX, y: e.clientY });
-        currentSegment.points.push({ x: e.clientX, y: e.clientY });
-        
-        if (points.length > 2) {
-            redraw(); 
-        } else {
-             ctx.lineTo(e.clientX, e.clientY);
-             ctx.stroke();
+        var pos = getPointerPos(e);
+        points.push({ x: pos.x, y: pos.y });
+        currentSegment.points.push({ x: pos.x, y: pos.y });
+
+        scheduleRedraw();
+        e.preventDefault();
+    });
+
+    document.addEventListener('mouseup', function(e) {
+        if (!drawing) return;
+        drawing = false;
+        points = [];
+        cacheDirty = true;
+        scheduleRedraw();
+        circleCursor.style.display = 'block';
+        e.preventDefault();
+    });
+
+    document.addEventListener('mouseout', function(e) {
+        if (!drawing) return;
+        drawing = false;
+        points = [];
+        cacheDirty = true;
+        scheduleRedraw();
+        circleCursor.style.display = 'block';
+    });
+
+    // Touch support
+    document.addEventListener('touchstart', function(e) {
+        if (toolContainer.contains(e.target)) return;
+        drawing = true;
+        points = [];
+        pushToUndo();
+        redoStack = [];
+        var pos = getPointerPos(e);
+
+        currentSegment = {
+            color: currentColor,
+            isErasing: isErasing,
+            thickness: currentLineWidth,
+            points: [],
+            assistLevel: assistLevel
+        };
+        drawingHistory.push(currentSegment);
+
+        updateContextStyle();
+        points.push({ x: pos.x, y: pos.y });
+        currentSegment.points.push({ x: pos.x, y: pos.y });
+
+        scheduleRedraw();
+        circleCursor.style.display = 'none';
+        e.preventDefault();
+    }, {passive: false});
+
+    document.addEventListener('touchmove', function(e) {
+        if (!drawing) return;
+        var pos = getPointerPos(e);
+        points.push({ x: pos.x, y: pos.y });
+        currentSegment.points.push({ x: pos.x, y: pos.y });
+        scheduleRedraw();
+        e.preventDefault();
+    }, {passive: false});
+
+    document.addEventListener('touchend', function(e) {
+        if (!drawing) return;
+        drawing = false;
+        points = [];
+        cacheDirty = true;
+        scheduleRedraw();
+        circleCursor.style.display = 'block';
+        e.preventDefault();
+    }, {passive: false});
+
+    // --- Keyboard Undo/Redo Shortcuts ---
+    document.addEventListener('keydown', function(e) {
+        if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'z') {
+            e.preventDefault();
+            undo();
+        } else if ((e.ctrlKey && e.key.toLowerCase() === 'y') || (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'z')) {
+            e.preventDefault();
+            redo();
         }
     });
 
-    canvas.addEventListener('mouseup', function() {
-        if (!drawing) return;
-        drawing = false;
-        points = [];
-        redraw();
-    });
-
-    canvas.addEventListener('mouseout', function() {
-        if (!drawing) return;
-        drawing = false;
-        points = [];
-        redraw();
-    });
-    
     // --- Utility and UI Functions ---
-    
     function downloadFile(data, filename, type) {
         var file = new Blob([data], { type: type });
         var a = document.createElement('a');
@@ -147,12 +373,14 @@ javascript:(function() {
         a.click();
         document.body.removeChild(a);
     }
-    
     function clearDrawing() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         drawingHistory = [];
+        undoStack = [];
+        redoStack = [];
+        cacheDirty = true;
+        scheduleRedraw();
     }
-
     function exportJSON() {
         var jsonState = JSON.stringify({
             url: window.location.href,
@@ -163,7 +391,6 @@ javascript:(function() {
         });
         downloadFile(jsonState, 'web-drawing-state.json', 'application/json');
     }
-    
     function importJSON() {
         var input = document.createElement('input');
         input.type = 'file';
@@ -177,8 +404,11 @@ javascript:(function() {
                 try {
                     var data = JSON.parse(event.target.result);
                     if (data && data.history) {
+                        pushToUndo();
                         drawingHistory = data.history;
-                        redraw();
+                        redoStack = [];
+                        cacheDirty = true;
+                        scheduleRedraw();
                         alert('Drawing imported successfully!');
                     } else {
                         throw new Error('Invalid JSON structure.');
@@ -193,7 +423,6 @@ javascript:(function() {
         document.body.appendChild(input);
         input.click();
     }
-    
     function exportJPEG() {
         var tempCanvas = document.createElement('canvas');
         tempCanvas.width = canvas.width;
@@ -215,7 +444,6 @@ javascript:(function() {
             alert('Export failed. Note: Exporting to JPEG may fail on cross-origin content.');
         }
     }
-
     function removeTools() {
         if (document.getElementById('web-highlighter-canvas')) {
             document.body.removeChild(canvas);
@@ -223,42 +451,37 @@ javascript:(function() {
         if (document.getElementById('tool-container')) {
             document.body.removeChild(toolContainer);
         }
+        if (document.getElementById('drawing-circle-cursor')) {
+            document.body.removeChild(circleCursor);
+        }
     }
-    
     function setThickness(thickness) {
         currentLineWidth = thickness;
-        isErasing = false; // Turn off eraser when changing thickness
-        
-        // Reset eraser button visual state
+        isErasing = false;
         eraserButton.textContent = 'Eraser Mode';
         eraserButton.style.backgroundColor = '#eee';
-        colorPicker.style.display = 'inline-block'; 
-
-        // Update context style
+        colorPicker.style.display = 'inline-block';
         updateContextStyle();
-        
-        // Visually highlight the active thickness button
+        updateCursorSize();
         document.querySelectorAll('#thickness-buttons button').forEach(btn => {
             btn.style.border = '1px solid #aaa';
         });
         document.getElementById('thickness-btn-' + thickness).style.border = '2px solid blue';
     }
-    
     function toggleEraser() {
         isErasing = !isErasing;
         if (isErasing) {
             eraserButton.textContent = 'Draw Mode (' + currentLineWidth + 'px)';
             eraserButton.style.backgroundColor = '#f00';
-            colorPicker.style.display = 'none'; 
+            colorPicker.style.display = 'none';
         } else {
             eraserButton.textContent = 'Eraser Mode';
             eraserButton.style.backgroundColor = '#eee';
-            colorPicker.style.display = 'inline-block'; 
+            colorPicker.style.display = 'inline-block';
         }
-        // Update context style
         updateContextStyle();
+        updateCursorSize();
     }
-
 
     // --- Create and Style UI Elements ---
     var toolContainer = document.createElement('div');
@@ -266,7 +489,7 @@ javascript:(function() {
     toolContainer.style.position = 'fixed';
     toolContainer.style.top = '10px';
     toolContainer.style.right = '10px';
-    toolContainer.style.zIndex = '10000';
+    toolContainer.style.zIndex = '10003';
     toolContainer.style.padding = '10px';
     toolContainer.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
     toolContainer.style.border = '1px solid #ccc';
@@ -274,7 +497,7 @@ javascript:(function() {
     toolContainer.style.display = 'flex';
     toolContainer.style.gap = '5px';
     toolContainer.style.flexDirection = 'column';
-    
+
     function createButton(text, onClick) {
         var btn = document.createElement('button');
         btn.textContent = text;
@@ -285,7 +508,23 @@ javascript:(function() {
         btn.style.cursor = 'pointer';
         return btn;
     }
-    
+
+    // Smoothing/Aim Assist Select
+    var assistSelect = document.createElement('select');
+    assistSelect.title = "Drawing Smoothing/Aim Assist";
+    assistLabels.forEach((label, idx) => {
+        var opt = document.createElement('option');
+        opt.value = idx;
+        opt.textContent = "Assist: " + label;
+        assistSelect.appendChild(opt);
+    });
+    assistSelect.value = assistLevel;
+    assistSelect.onchange = function() {
+        assistLevel = parseInt(this.value, 10);
+    };
+    assistSelect.style.marginBottom = '6px';
+    assistSelect.style.fontSize = '13px';
+
     // Color Picker
     var colorPicker = document.createElement('input');
     colorPicker.type = 'color';
@@ -296,6 +535,7 @@ javascript:(function() {
         eraserButton.textContent = 'Eraser Mode';
         eraserButton.style.backgroundColor = '#eee';
         updateContextStyle();
+        updateCursorSize();
     };
 
     // Thickness Buttons Container
@@ -304,8 +544,7 @@ javascript:(function() {
     thicknessContainer.style.display = 'flex';
     thicknessContainer.style.gap = '2px';
     thicknessContainer.style.marginBottom = '5px';
-    
-    // Create the 5 thickness buttons
+
     thicknessLevels.forEach(thickness => {
         var btn = document.createElement('button');
         btn.id = 'thickness-btn-' + thickness;
@@ -320,11 +559,17 @@ javascript:(function() {
         };
         thicknessContainer.appendChild(btn);
     });
-    
-    // Append all elements
+
+    // Undo/Redo Buttons
+    var undoBtn = createButton('Undo (Ctrl+Z)', undo);
+    var redoBtn = createButton('Redo (Ctrl+Y/Ctrl+Shift+Z)', redo);
+
+    toolContainer.appendChild(assistSelect);
     toolContainer.appendChild(thicknessContainer);
     toolContainer.appendChild(colorPicker);
-    
+    toolContainer.appendChild(undoBtn);
+    toolContainer.appendChild(redoBtn);
+
     var eraserButton = createButton('Eraser Mode', toggleEraser);
     toolContainer.appendChild(eraserButton);
 
@@ -336,6 +581,19 @@ javascript:(function() {
 
     document.body.appendChild(toolContainer);
 
-    // Initial Setup: Set the initial thickness and highlight the corresponding button
-    setThickness(defaultLineWidth); 
+    setThickness(defaultLineWidth);
+    updateCursorSize();
+
+    window.addEventListener('scroll', function() {
+        circleCursor.style.left = lastPointerPos.x + 'px';
+        circleCursor.style.top = lastPointerPos.y + 'px';
+    });
+
+    document.addEventListener('mousemove', function(e) {
+        if (toolContainer.contains(e.target)) {
+            canvas.style.cursor = 'default';
+        } else {
+            canvas.style.cursor = 'none';
+        }
+    });
 })();
