@@ -731,6 +731,10 @@ function drawSmoothLineSegment(context, segment, scrollX, scrollY) {
             var pos = getVirtualPointer(e);
             points.push({ x: pos.x, y: pos.y });
             currentSegment.points.push({ x: pos.x, y: pos.y });
+            // Add a second point at the same position to force a circle dot on click
+            currentSegment.points.push({ x: pos.x, y: pos.y });
+            currentSegment.brushData.push({});
+            currentSegment.brushData.push({});
             scheduleRedraw();
             circleCursor.style.display = 'none';
         }
