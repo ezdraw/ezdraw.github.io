@@ -4,6 +4,8 @@ Simple Drawing utility with a few preset thicknesses, custom color picker, clear
 ## Updates
 ### Update v1.2 released!
 This version adds layering, custom px sizes, opacity control, and some quality of life bug fixes and performance enhancements.
+#### Additional Mini Updates
+v1.2.1 Simplified html code and fixed a bug where the user would click down, but if the cursor didn't move, it wouldn't generate a full colored circle/line segment, instead it would leave a tiny black square. This was caused by the drawing function being triggered by mousemove and wasn't set to trigger on initial mousedown.
 <br>
 <br>
 ## Showcase
