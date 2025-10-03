@@ -1,6 +1,9 @@
 # ez-write
 Simple Drawing utility with a few preset thicknesses, custom color picker, clear drawing feature, eraser, and export options. - Runs in web browser and is made for its bookmarklet version, for annotating web-pages.
 
+## Updates
+### Update v1.2 released!
+This version adds layering, custom px sizes, opacity control, and some quality of life bug fixes and performance enhancements.
 
 ## Showcase
 The cloud software comes packed with amazing state of the art CaineTech smoothing! Optional levels as well as an option to completely disable.
