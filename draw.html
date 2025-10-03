@@ -20,6 +20,87 @@ if ('serviceWorker' in navigator) {
 }
 </script>
 <script>
+        // --- Custom Modal Dialog ---
+    var modalOverlay = document.createElement('div');
+    modalOverlay.style.position = 'fixed';
+    modalOverlay.style.left = '0';
+    modalOverlay.style.top = '0';
+    modalOverlay.style.width = '100vw';
+    modalOverlay.style.height = '100vh';
+    modalOverlay.style.background = 'rgba(0,0,0,0.35)';
+    modalOverlay.style.display = 'none';
+    modalOverlay.style.zIndex = '10010';
+    modalOverlay.style.justifyContent = 'center';
+    modalOverlay.style.alignItems = 'center';
+    modalOverlay.style.flexDirection = 'column';
+    modalOverlay.style.fontFamily = 'sans-serif';
+    modalOverlay.style.transition = 'opacity 0.2s';
+    var modalBox = document.createElement('div');
+    modalBox.style.background = '#fff';
+    modalBox.style.padding = '24px 18px 16px 18px';
+    modalBox.style.borderRadius = '8px';
+    modalBox.style.boxShadow = '0 2px 16px rgba(0,0,0,0.18)';
+    modalBox.style.minWidth = '260px';
+    modalBox.style.maxWidth = '90vw';
+    modalBox.style.display = 'flex';
+    modalBox.style.flexDirection = 'column';
+    modalBox.style.alignItems = 'center';
+    var modalMsg = document.createElement('div');
+    modalMsg.style.marginBottom = '18px';
+    modalMsg.style.fontSize = '16px';
+    modalMsg.style.textAlign = 'center';
+    modalBox.appendChild(modalMsg);
+    var modalInput = document.createElement('input');
+    modalInput.style.display = 'none';
+    modalInput.style.marginBottom = '12px';
+    modalInput.style.fontSize = '15px';
+    modalInput.style.width = '90%';
+    modalBox.appendChild(modalInput);
+    var modalBtnRow = document.createElement('div');
+    modalBtnRow.style.display = 'flex';
+    modalBtnRow.style.gap = '12px';
+    modalBtnRow.style.justifyContent = 'center';
+    modalBox.appendChild(modalBtnRow);
+    modalOverlay.appendChild(modalBox);
+    document.body.appendChild(modalOverlay);
+
+    function showModal(msg, opts) {
+        return new Promise((resolve) => {
+            modalMsg.textContent = msg;
+            modalInput.style.display = opts && opts.input ? 'block' : 'none';
+            modalInput.value = opts && opts.value ? opts.value : '';
+            modalBtnRow.innerHTML = '';
+            modalOverlay.style.display = 'flex';
+            modalOverlay.style.opacity = '1';
+            function close(result) {
+                modalOverlay.style.display = 'none';
+                resolve(result);
+            }
+            if (opts && opts.input) {
+                modalInput.focus();
+                modalInput.onkeydown = function(e) {
+                    if (e.key === 'Enter') {
+                        close(modalInput.value);
+                    }
+                };
+            }
+            (opts && opts.buttons ? opts.buttons : ['OK', 'Cancel']).forEach((label, idx) => {
+                var btn = document.createElement('button');
+                btn.textContent = label;
+                btn.style.padding = '6px 18px';
+                btn.style.fontSize = '15px';
+                btn.style.borderRadius = '4px';
+                btn.style.border = '1px solid #aaa';
+                btn.style.background = idx === 0 ? '#2196f3' : '#eee';
+                btn.style.color = idx === 0 ? '#fff' : '#222';
+                btn.onclick = function() {
+                    if (opts && opts.input && idx === 0) close(modalInput.value);
+                    else close(idx === 0);
+                };
+                modalBtnRow.appendChild(btn);
+            });
+        });
+    }
 javascript:(function () {
     // --- Virtual canvas settings ---
     var VIRTUAL_SIZE = 100000;
@@ -32,9 +113,14 @@ javascript:(function () {
     var isPanning = false, panLast = { x: 0, y: 0 };
     var drawing = false, isErasing = false;
     var currentLineWidth = 4, currentColor = "#FF0000";
+    var currentBrush = 'pen'; // 'pen', 'paintbrush', 'airbrush', 'spraypaint'
+    var currentOpacity = 1.0;
     var thicknessLevels = [2, 4, 8, 16, 24];
     var assistLevel = 2, assistLabels = ["None", "Low", "Medium", "High"];
     var drawingHistory = [], undoStack = [], redoStack = [];
+    // --- Layering ---
+    var layers = [ { name: 'Layer 1', drawingHistory: [], visible: true } ];
+    var currentLayerIndex = 0;
     var currentSegment = null, points = [];
     var lastPointerPos = { x:0, y:0 };
 
@@ -125,24 +211,69 @@ javascript:(function () {
         cacheDirty = true; scheduleRedraw();
     };
 
-    // Thickness Buttons
+    // Brush Size Slider
     var thicknessContainer = document.createElement('div');
-    thicknessContainer.id = 'thickness-buttons';
     thicknessContainer.style.display = 'flex';
-    thicknessContainer.style.gap = '2px';
-    thicknessContainer.style.marginBottom = '5px';
-    thicknessLevels.forEach(thickness => {
-        var btn = document.createElement('button');
-        btn.id = 'thickness-btn-' + thickness;
-        btn.textContent = thickness + 'px';
-        btn.style.width = '35px';
-        btn.style.height = '25px';
-        btn.style.padding = '0';
-        btn.style.fontSize = '10px';
-        btn.style.cursor = 'pointer';
-        btn.onclick = function() { setThickness(thickness); };
-        thicknessContainer.appendChild(btn);
+    thicknessContainer.style.alignItems = 'center';
+    thicknessContainer.style.gap = '6px';
+    var thicknessLabel = document.createElement('label');
+    thicknessLabel.textContent = 'Brush Size:';
+    thicknessLabel.style.fontSize = '13px';
+    var thicknessSlider = document.createElement('input');
+    thicknessSlider.type = 'range';
+    thicknessSlider.min = 1;
+    thicknessSlider.max = 64;
+    thicknessSlider.value = currentLineWidth;
+    thicknessSlider.style.width = '80px';
+    var thicknessValue = document.createElement('span');
+    thicknessValue.textContent = currentLineWidth + 'px';
+    thicknessValue.style.fontSize = '13px';
+    thicknessValue.style.cursor = 'pointer';
+    thicknessValue.title = 'Click to enter a value';
+
+    // Make px label editable on click
+    thicknessValue.addEventListener('click', function() {
+        var input = document.createElement('input');
+        input.type = 'number';
+        input.min = thicknessSlider.min;
+        input.max = thicknessSlider.max;
+        input.value = thicknessSlider.value;
+        input.style.width = '48px';
+        input.style.fontSize = '13px';
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                input.blur();
+            } else if (e.key === 'Escape') {
+                thicknessValue.textContent = thicknessSlider.value + 'px';
+                thicknessValue.style.display = '';
+                input.remove();
+            }
+        });
+        input.addEventListener('blur', function() {
+            var val = parseInt(input.value, 10);
+            if (!isNaN(val) && val >= thicknessSlider.min && val <= thicknessSlider.max) {
+                thicknessSlider.value = val;
+                setThickness(val);
+                thicknessValue.textContent = val + 'px';
+            } else {
+                thicknessValue.textContent = thicknessSlider.value + 'px';
+            }
+            thicknessValue.style.display = '';
+            input.remove();
+        });
+        thicknessValue.style.display = 'none';
+        thicknessValue.parentNode.insertBefore(input, thicknessValue);
+        input.focus();
+        input.select();
     });
+
+    thicknessSlider.oninput = function() {
+        setThickness(parseInt(thicknessSlider.value, 10));
+        thicknessValue.textContent = thicknessSlider.value + 'px';
+    };
+    thicknessContainer.appendChild(thicknessLabel);
+    thicknessContainer.appendChild(thicknessSlider);
+    thicknessContainer.appendChild(thicknessValue);
 
     var undoBtn = createButton('Undo (Ctrl+Z)', undo);
     var redoBtn = createButton('Redo (Ctrl+Y/Ctrl+Shift+Z)', redo);
@@ -163,6 +294,143 @@ javascript:(function () {
     toolContainer.appendChild(assistSelect);
     toolContainer.appendChild(thicknessContainer);
     toolContainer.appendChild(colorPicker);
+    // Only pen brush remains, so no selector needed
+    // --- Layer Controls ---
+    var layerContainer = document.createElement('div');
+    layerContainer.style.display = 'flex';
+    layerContainer.style.flexDirection = 'column';
+    layerContainer.style.gap = '4px';
+    layerContainer.style.marginBottom = '6px';
+    var layerList = document.createElement('div');
+    function renderLayerList() {
+        layerList.innerHTML = '';
+        layers.forEach((layer, idx) => {
+            var row = document.createElement('div');
+            row.style.display = 'flex';
+            row.style.alignItems = 'center';
+            row.style.gap = '4px';
+            var radio = document.createElement('input');
+            radio.type = 'radio';
+            radio.name = 'layer-select';
+            radio.checked = idx === currentLayerIndex;
+            radio.onclick = function() { currentLayerIndex = idx; renderLayerList(); cacheDirty = true; scheduleRedraw(); };
+            var label = document.createElement('span');
+            label.textContent = layer.name;
+            label.style.fontWeight = idx === currentLayerIndex ? 'bold' : 'normal';
+            var visBtn = document.createElement('button');
+            visBtn.textContent = layer.visible ? '👁️' : '🚫';
+            visBtn.title = layer.visible ? 'Hide Layer' : 'Show Layer';
+            visBtn.onclick = function() { layer.visible = !layer.visible; renderLayerList(); cacheDirty = true; scheduleRedraw(); };
+
+            // Rename button
+            var renameBtn = document.createElement('button');
+            renameBtn.textContent = '✏️';
+            renameBtn.title = 'Rename Layer';
+            renameBtn.onclick = function() {
+                showModal('Rename layer:', { input: true, value: layer.name, buttons: ['Rename', 'Cancel'] }).then((val) => {
+                    if (typeof val === 'string' && val.trim()) {
+                        layer.name = val.trim();
+                        renderLayerList();
+                        cacheDirty = true; scheduleRedraw();
+                    }
+                });
+            };
+
+            // Delete button (only if more than 1 layer)
+            var delBtn = document.createElement('button');
+            delBtn.textContent = '🗑️';
+            delBtn.title = 'Delete Layer';
+            delBtn.disabled = layers.length === 1;
+            delBtn.onclick = function() {
+                if (layers.length === 1) return;
+                showModal('Delete this layer?', { buttons: ['Delete', 'Cancel'] }).then((result) => {
+                    if (!result) return;
+                    layers.splice(idx, 1);
+                    if (currentLayerIndex >= layers.length) currentLayerIndex = layers.length - 1;
+                    renderLayerList();
+                    cacheDirty = true; scheduleRedraw();
+                });
+            };
+
+            // Up/Down buttons
+            var upBtn = document.createElement('button');
+            upBtn.textContent = '⬆️';
+            upBtn.title = 'Move Layer Up';
+            upBtn.disabled = idx === 0;
+            upBtn.onclick = function() {
+                if (idx === 0) return;
+                var tmp = layers[idx-1];
+                layers[idx-1] = layers[idx];
+                layers[idx] = tmp;
+                if (currentLayerIndex === idx) currentLayerIndex--;
+                else if (currentLayerIndex === idx-1) currentLayerIndex++;
+                renderLayerList();
+                cacheDirty = true; scheduleRedraw();
+            };
+            var downBtn = document.createElement('button');
+            downBtn.textContent = '⬇️';
+            downBtn.title = 'Move Layer Down';
+            downBtn.disabled = idx === layers.length-1;
+            downBtn.onclick = function() {
+                if (idx === layers.length-1) return;
+                var tmp = layers[idx+1];
+                layers[idx+1] = layers[idx];
+                layers[idx] = tmp;
+                if (currentLayerIndex === idx) currentLayerIndex++;
+                else if (currentLayerIndex === idx+1) currentLayerIndex--;
+                renderLayerList();
+                cacheDirty = true; scheduleRedraw();
+            };
+
+            row.appendChild(radio);
+            row.appendChild(label);
+            row.appendChild(renameBtn);
+            row.appendChild(visBtn);
+            row.appendChild(upBtn);
+            row.appendChild(downBtn);
+            row.appendChild(delBtn);
+            layerList.appendChild(row);
+        });
+    }
+    renderLayerList();
+    var addLayerBtn = document.createElement('button');
+    addLayerBtn.textContent = 'Add Layer';
+    addLayerBtn.onclick = function() {
+        layers.push({ name: 'Layer ' + (layers.length+1), drawingHistory: [], visible: true });
+        currentLayerIndex = layers.length-1;
+        renderLayerList();
+        cacheDirty = true; scheduleRedraw();
+    };
+    layerContainer.appendChild(layerList);
+    layerContainer.appendChild(addLayerBtn);
+    toolContainer.appendChild(layerContainer);
+    // --- Opacity Slider ---
+    var opacityContainer = document.createElement('div');
+    opacityContainer.style.display = 'flex';
+    opacityContainer.style.alignItems = 'center';
+    opacityContainer.style.gap = '6px';
+    var opacityLabel = document.createElement('label');
+    opacityLabel.textContent = 'Opacity:';
+    opacityLabel.style.fontSize = '13px';
+    var opacitySlider = document.createElement('input');
+    opacitySlider.type = 'range';
+    opacitySlider.min = 10;
+    opacitySlider.max = 100;
+    opacitySlider.value = 100;
+    opacitySlider.style.width = '80px';
+    var opacityValue = document.createElement('span');
+    opacityValue.textContent = '100%';
+    opacityValue.style.fontSize = '13px';
+    opacitySlider.oninput = function() {
+        currentOpacity = parseInt(opacitySlider.value, 10) / 100;
+        opacityValue.textContent = opacitySlider.value + '%';
+        updateContextStyle();
+        cacheDirty = true; scheduleRedraw();
+    };
+    opacityContainer.appendChild(opacityLabel);
+    opacityContainer.appendChild(opacitySlider);
+    opacityContainer.appendChild(opacityValue);
+    toolContainer.appendChild(opacityContainer);
     toolContainer.appendChild(undoBtn);
     toolContainer.appendChild(redoBtn);
     toolContainer.appendChild(originBtn);
@@ -202,10 +470,8 @@ javascript:(function () {
         colorPicker.style.display = 'inline-block';
         updateContextStyle();
         updateCursorSize();
-        document.querySelectorAll('#thickness-buttons button').forEach(btn => {
-            btn.style.border = '1px solid #aaa';
-        });
-        document.getElementById('thickness-btn-' + thickness).style.border = '2px solid blue';
+        thicknessSlider.value = thickness;
+        thicknessValue.textContent = thickness + 'px';
         cacheDirty = true; scheduleRedraw();
     }
     function toggleEraser() {
@@ -255,43 +521,100 @@ javascript:(function () {
     function lerp(a,b,t){ return a+(b-a)*t; }
 
 function drawSmoothLineSegment(context, segment, scrollX, scrollY) {
-    let pts = smoothPoints(segment.points, segment.assistLevel ?? assistLevel);
-    if (!pts.length) return;
+    // For performance: if this is the active drawing segment, only render last N points (except paintbrush)
+    let pts = segment.points;
+    if (segment === window.__activeDrawingSegment && (segment.brush || 'pen') !== 'paintbrush' && pts.length > 40) {
+        pts = pts.slice(-40);
+    }
+    pts = smoothPoints(pts, segment.assistLevel ?? assistLevel);
     context.save();
     context.globalCompositeOperation = segment.isErasing ? 'destination-out' : 'source-over';
-    context.strokeStyle = segment.color || 'black';
-    context.lineWidth = segment.isErasing ? 20 : (segment.thickness || currentLineWidth);
+    let opacity = typeof segment.opacity === 'number' ? segment.opacity : currentOpacity;
+    let color = segment.isErasing ? '#fff' : hexToRgba(segment.color || 'black', opacity);
+    let brush = segment.brush || 'pen';
     context.lineCap = "round";
     context.lineJoin = "round";
-    context.beginPath();
-    context.moveTo((pts[0].x - scrollX) * dpr, (pts[0].y - scrollY) * dpr);
-    if (pts.length == 1) {
-        // Draw a dot
-        context.arc((pts[0].x - scrollX) * dpr, (pts[0].y - scrollY) * dpr, context.lineWidth / 2 * dpr, 0, 2 * Math.PI);
-        context.fill();
-    } else if (pts.length == 2) {
-        context.lineTo((pts[1].x - scrollX) * dpr, (pts[1].y - scrollY) * dpr);
-        context.stroke();
-    } else {
-        for (let i = 1; i < pts.length - 2; i++) {
-            let xc = ((pts[i].x + pts[i + 1].x) / 2 - scrollX) * dpr;
-            let yc = ((pts[i].y + pts[i + 1].y) / 2 - scrollY) * dpr;
+    if (brush === 'pen') {
+        context.strokeStyle = color;
+        context.lineWidth = segment.isErasing ? 20 : (segment.thickness || currentLineWidth);
+        context.beginPath();
+        context.moveTo((pts[0].x - scrollX) * dpr, (pts[0].y - scrollY) * dpr);
+        if (pts.length == 1) {
+            context.arc((pts[0].x - scrollX) * dpr, (pts[0].y - scrollY) * dpr, context.lineWidth / 2 * dpr, 0, 2 * Math.PI);
+            context.fill();
+        } else if (pts.length == 2) {
+            context.lineTo((pts[1].x - scrollX) * dpr, (pts[1].y - scrollY) * dpr);
+            context.stroke();
+        } else {
+            for (let i = 1; i < pts.length - 2; i++) {
+                let xc = ((pts[i].x + pts[i + 1].x) / 2 - scrollX) * dpr;
+                let yc = ((pts[i].y + pts[i + 1].y) / 2 - scrollY) * dpr;
+                context.quadraticCurveTo(
+                    (pts[i].x - scrollX) * dpr,
+                    (pts[i].y - scrollY) * dpr,
+                    xc,
+                    yc
+                );
+            }
+            let n = pts.length - 1;
             context.quadraticCurveTo(
-                (pts[i].x - scrollX) * dpr,
-                (pts[i].y - scrollY) * dpr,
-                xc,
-                yc
+                (pts[n - 1].x - scrollX) * dpr,
+                (pts[n - 1].y - scrollY) * dpr,
+                (pts[n].x - scrollX) * dpr,
+                (pts[n].y - scrollY) * dpr
             );
+            context.stroke();
         }
-        // Final curve
-        let n = pts.length - 1;
-        context.quadraticCurveTo(
-            (pts[n - 1].x - scrollX) * dpr,
-            (pts[n - 1].y - scrollY) * dpr,
-            (pts[n].x - scrollX) * dpr,
-            (pts[n].y - scrollY) * dpr
-        );
-        context.stroke();
+    } else if (brush === 'paintbrush') {
+        let bristleCount = 64; // much denser
+        context.globalAlpha = opacity * 0.7; // more color
+        for (let b = 0; b < bristleCount; b++) {
+            context.strokeStyle = color;
+            context.beginPath();
+            for (let i = 0; i < pts.length; i++) {
+                let bristle = (segment.brushData && segment.brushData[i] && segment.brushData[i].bristles) ? segment.brushData[i].bristles[b] : { dx: 0, dy: 0, lw: (segment.thickness || currentLineWidth) };
+                // Make bristle thinner
+                context.lineWidth = (bristle.lw || (segment.thickness || currentLineWidth)) * 0.18;
+                let px = (pts[i].x - scrollX + (bristle.dx || 0)) * dpr;
+                let py = (pts[i].y - scrollY + (bristle.dy || 0)) * dpr;
+                if (i === 0) context.moveTo(px, py);
+                else context.lineTo(px, py);
+            }
+            context.stroke();
+        }
+        context.globalAlpha = 1;
+    } else if (brush === 'airbrush') {
+        context.globalAlpha = opacity * 0.45;
+        context.fillStyle = color;
+        for (let i = 0; i < pts.length; i++) {
+            let dots = (segment.brushData && segment.brushData[i] && segment.brushData[i].dots) ? segment.brushData[i].dots : [];
+            let x = (pts[i].x - scrollX) * dpr;
+            let y = (pts[i].y - scrollY) * dpr;
+            for (let d = 0; d < dots.length; d++) {
+                let dot = dots[d];
+                context.beginPath();
+                // More, smaller dots
+                context.arc(x + (dot.dx || 0) * dpr, y + (dot.dy || 0) * dpr, ((dot.size || 1) * 0.22) * dpr, 0, 2 * Math.PI);
+                context.fill();
+            }
+        }
+        context.globalAlpha = 1;
+    } else if (brush === 'spraypaint') {
+        context.globalAlpha = opacity * 0.38;
+        context.fillStyle = color;
+        for (let i = 0; i < pts.length; i++) {
+            let dots = (segment.brushData && segment.brushData[i] && segment.brushData[i].dots) ? segment.brushData[i].dots : [];
+            let x = (pts[i].x - scrollX) * dpr;
+            let y = (pts[i].y - scrollY) * dpr;
+            for (let d = 0; d < dots.length; d++) {
+                let dot = dots[d];
+                context.beginPath();
+                // More, smaller dots
+                context.arc(x + (dot.dx || 0) * dpr, y + (dot.dy || 0) * dpr, ((dot.size || 1) * 0.18) * dpr, 0, 2 * Math.PI);
+                context.fill();
+            }
+        }
+        context.globalAlpha = 1;
     }
     context.restore();
 }
@@ -301,15 +624,19 @@ function drawSmoothLineSegment(context, segment, scrollX, scrollY) {
         cacheCtx.clearRect(0, 0, cacheCanvas.width, cacheCanvas.height);
         var sx = offsetX - window.innerWidth/2/zoom,
             sy = offsetY - window.innerHeight/2/zoom;
-        for (var i = 0; i < drawingHistory.length - (drawing ? 1 : 0); i++) {
-            var seg = drawingHistory[i];
-            cacheCtx.save();
-            cacheCtx.globalCompositeOperation = seg.isErasing ? 'destination-out' : 'source-over';
-            cacheCtx.setTransform(zoom * dpr,0,0,zoom * dpr,-sx*zoom*dpr,-sy*zoom*dpr);
-            drawSmoothLineSegment(cacheCtx, seg, 0, 0);
-            cacheCtx.setTransform(1,0,0,1,0,0);
-            cacheCtx.restore();
-        }
+        // Draw all visible layers in order
+        layers.forEach((layer, lidx) => {
+            if (!layer.visible) return;
+            for (var i = 0; i < layer.drawingHistory.length - (drawing && lidx === currentLayerIndex ? 1 : 0); i++) {
+                var seg = layer.drawingHistory[i];
+                cacheCtx.save();
+                cacheCtx.globalCompositeOperation = seg.isErasing ? 'destination-out' : 'source-over';
+                cacheCtx.setTransform(zoom * dpr,0,0,zoom * dpr,-sx*zoom*dpr,-sy*zoom*dpr);
+                drawSmoothLineSegment(cacheCtx, seg, 0, 0);
+                cacheCtx.setTransform(1,0,0,1,0,0);
+                cacheCtx.restore();
+            }
+        });
         cacheDirty = false;
     }
 
@@ -332,43 +659,57 @@ function drawSmoothLineSegment(context, segment, scrollX, scrollY) {
         ctx.globalAlpha = 1;
         ctx.restore();
 
-        // In-progress stroke
-        if (drawing && drawingHistory.length) {
+        // In-progress stroke (only for current layer)
+        if (drawing && layers[currentLayerIndex].drawingHistory.length) {
             ctx.save();
             var sx = offsetX - window.innerWidth/2/zoom,
                 sy = offsetY - window.innerHeight/2/zoom;
             ctx.setTransform(zoom*dpr,0,0,zoom*dpr,-sx*zoom*dpr,-sy*zoom*dpr);
-            ctx.globalCompositeOperation = drawingHistory[drawingHistory.length-1].isErasing ? 'destination-out' : 'source-over';
-            drawSmoothLineSegment(ctx, drawingHistory[drawingHistory.length-1], 0, 0);
+            var dh = layers[currentLayerIndex].drawingHistory;
+            ctx.globalCompositeOperation = dh[dh.length-1].isErasing ? 'destination-out' : 'source-over';
+            drawSmoothLineSegment(ctx, dh[dh.length-1], 0, 0);
             ctx.setTransform(1,0,0,1,0,0);
             ctx.restore();
         }
         updateContextStyle();
     }
 
+    function hexToRgba(hex, alpha) {
+        hex = hex.replace('#', '');
+        if (hex.length === 3) {
+            hex = hex.split('').map(x => x + x).join('');
+        }
+        var r = parseInt(hex.substring(0,2), 16);
+        var g = parseInt(hex.substring(2,4), 16);
+        var b = parseInt(hex.substring(4,6), 16);
+        return `rgba(${r},${g},${b},${alpha})`;
+    }
     function updateContextStyle() {
-        ctx.strokeStyle = currentColor;
+        ctx.strokeStyle = isErasing ? '#fff' : hexToRgba(currentColor, currentOpacity);
         ctx.lineWidth = isErasing ? 20 : currentLineWidth;
     }
 
     // --- Undo/Redo Functions ---
     function pushToUndo() {
-        undoStack.push(JSON.stringify(drawingHistory));
-        if (undoStack.length > 100) undoStack.shift();
+    var dh = layers[currentLayerIndex].drawingHistory;
+    undoStack.push(JSON.stringify(dh));
+    if (undoStack.length > 100) undoStack.shift();
     }
     function undo() {
-        if (undoStack.length === 0) return;
-        redoStack.push(JSON.stringify(drawingHistory));
-        drawingHistory = JSON.parse(undoStack.pop());
-        cacheDirty = true;
-        scheduleRedraw();
+    if (undoStack.length === 0) return;
+    var dh = layers[currentLayerIndex].drawingHistory;
+    redoStack.push(JSON.stringify(dh));
+    layers[currentLayerIndex].drawingHistory = JSON.parse(undoStack.pop());
+    cacheDirty = true;
+    scheduleRedraw();
     }
     function redo() {
-        if (redoStack.length === 0) return;
-        undoStack.push(JSON.stringify(drawingHistory));
-        drawingHistory = JSON.parse(redoStack.pop());
-        cacheDirty = true;
-        scheduleRedraw();
+    if (redoStack.length === 0) return;
+    var dh = layers[currentLayerIndex].drawingHistory;
+    undoStack.push(JSON.stringify(dh));
+    layers[currentLayerIndex].drawingHistory = JSON.parse(redoStack.pop());
+    cacheDirty = true;
+    scheduleRedraw();
     }
 
     // --- Drawing and Pan/Zoom Events ---
@@ -401,9 +742,12 @@ function drawSmoothLineSegment(context, segment, scrollX, scrollY) {
                 isErasing: isErasing,
                 thickness: currentLineWidth,
                 points: [],
-                assistLevel: assistLevel
+                assistLevel: assistLevel,
+                opacity: currentOpacity,
+                brush: currentBrush,
+                brushData: []
             };
-            drawingHistory.push(currentSegment);
+            layers[currentLayerIndex].drawingHistory.push(currentSegment);
             updateContextStyle();
             var pos = getVirtualPointer(e);
             points.push({ x: pos.x, y: pos.y });
@@ -432,6 +776,52 @@ function drawSmoothLineSegment(context, segment, scrollX, scrollY) {
             var pos = getVirtualPointer(e);
             points.push({ x: pos.x, y: pos.y });
             currentSegment.points.push({ x: pos.x, y: pos.y });
+            // Store brush randomness for this point
+            let brush = currentSegment.brush || 'pen';
+            if (brush === 'paintbrush') {
+                let bristleCount = 64;
+                let spread = (currentSegment.thickness || currentLineWidth) * 0.7;
+                let bristles = [];
+                for (let b = 0; b < bristleCount; b++) {
+                    let angle = (Math.PI * 2 * b) / bristleCount;
+                    let dx = Math.cos(angle) * spread * (Math.random() * 0.5 + 0.5);
+                    let dy = Math.sin(angle) * spread * (Math.random() * 0.5 + 0.5);
+                    // Make bristle thinner
+                    let lw = (currentSegment.thickness || currentLineWidth) * (0.09 + Math.random() * 0.13);
+                    bristles.push({ dx, dy, lw });
+                }
+                currentSegment.brushData.push({ bristles });
+            } else if (brush === 'airbrush') {
+                let dots = [];
+                let dotCount = 96;
+                let radius = (currentSegment.thickness || currentLineWidth) * 0.6;
+                for (let d = 0; d < dotCount; d++) {
+                    let a = Math.random() * 2 * Math.PI;
+                    let r = Math.random() * radius;
+                    let dx = Math.cos(a) * r;
+                    let dy = Math.sin(a) * r;
+                    // More, smaller dots
+                    let size = radius * (0.015 + Math.random() * 0.025);
+                    dots.push({ dx, dy, size });
+                }
+                currentSegment.brushData.push({ dots });
+            } else if (brush === 'spraypaint') {
+                let dots = [];
+                let dotCount = 64;
+                let radius = (currentSegment.thickness || currentLineWidth) * 0.8;
+                for (let d = 0; d < dotCount; d++) {
+                    let a = Math.random() * 2 * Math.PI;
+                    let r = Math.sqrt(Math.random()) * radius;
+                    let dx = Math.cos(a) * r;
+                    let dy = Math.sin(a) * r;
+                    // More, smaller dots
+                    let size = 0.18 + Math.random() * 0.18;
+                    dots.push({ dx, dy, size });
+                }
+                currentSegment.brushData.push({ dots });
+            } else {
+                currentSegment.brushData.push({});
+            }
             scheduleRedraw();
         }
     });
@@ -481,9 +871,11 @@ function drawSmoothLineSegment(context, segment, scrollX, scrollY) {
                 isErasing: isErasing,
                 thickness: currentLineWidth,
                 points: [],
-                assistLevel: assistLevel
+                assistLevel: assistLevel,
+                opacity: currentOpacity,
+                brush: currentBrush
             };
-            drawingHistory.push(currentSegment);
+            layers[currentLayerIndex].drawingHistory.push(currentSegment);
             updateContextStyle();
             points.push({ x: pos.x, y: pos.y });
             currentSegment.points.push({ x: pos.x, y: pos.y });
@@ -506,6 +898,36 @@ function drawSmoothLineSegment(context, segment, scrollX, scrollY) {
             var pos = getVirtualPointer(e);
             points.push({ x: pos.x, y: pos.y });
             currentSegment.points.push({ x: pos.x, y: pos.y });
+            // Store brush randomness for this point
+            let brush = currentSegment.brush || 'pen';
+            if (brush === 'paintbrush') {
+                let bristleCount = 12;
+                let spread = (currentSegment.thickness || currentLineWidth) * 0.7;
+                let bristles = [];
+                for (let b = 0; b < bristleCount; b++) {
+                    let angle = (Math.PI * 2 * b) / bristleCount;
+                    let dx = Math.cos(angle) * spread * (Math.random() * 0.5 + 0.5);
+                    let dy = Math.sin(angle) * spread * (Math.random() * 0.5 + 0.5);
+                    let lw = (currentSegment.thickness || currentLineWidth) * (0.5 + Math.random() * 0.5);
+                    bristles.push({ dx, dy, lw });
+                }
+                currentSegment.brushData.push({ bristles });
+            } else if (brush === 'airbrush' || brush === 'spraypaint') {
+                let dots = [];
+                let dotCount = brush === 'airbrush' ? 8 : 18;
+                let radius = (currentSegment.thickness || currentLineWidth) * (brush === 'airbrush' ? 0.6 : 0.8);
+                for (let d = 0; d < dotCount; d++) {
+                    let a = Math.random() * 2 * Math.PI;
+                    let r = brush === 'airbrush' ? Math.random() * radius : Math.sqrt(Math.random()) * radius;
+                    let dx = Math.cos(a) * r;
+                    let dy = Math.sin(a) * r;
+                    let size = brush === 'airbrush' ? (radius * (0.18 + Math.random() * 0.18)) : (0.7 + Math.random() * 0.7);
+                    dots.push({ dx, dy, size });
+                }
+                currentSegment.brushData.push({ dots });
+            } else {
+                currentSegment.brushData.push({});
+            }
             scheduleRedraw();
         }
         e.preventDefault();
@@ -559,12 +981,18 @@ function drawSmoothLineSegment(context, segment, scrollX, scrollY) {
         document.body.removeChild(a);
     }
     function clearDrawing() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        drawingHistory = [];
-        undoStack = [];
-        redoStack = [];
-        cacheDirty = true;
-        scheduleRedraw();
+        showModal('Are you sure you want to clear the drawing and reset all layers? This cannot be undone.', { buttons: ['Yes', 'Cancel'] }).then((result) => {
+            if (!result) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            layers.length = 0;
+            layers.push({ name: 'Layer 1', drawingHistory: [], visible: true });
+            currentLayerIndex = 0;
+            undoStack = [];
+            redoStack = [];
+            renderLayerList();
+            cacheDirty = true;
+            scheduleRedraw();
+        });
     }
     function exportJSON() {
         var jsonState = JSON.stringify({
