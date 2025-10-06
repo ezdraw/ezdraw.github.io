@@ -1,9 +1,16 @@
 # ez-write
 Simple Drawing utility with a few preset thicknesses, custom color picker, clear drawing feature, eraser, and export options. - Runs in web browser and is made for its bookmarklet version, for annotating web-pages.
 <br>
-## Updates
+## Changelog
 ### Update v1.2 released!
 This version adds layering, custom px sizes, opacity control, and some quality of life bug fixes and performance enhancements.
+#### Additional Mini Updates
+v1.2.1 Simplified html code and fixed a bug where the user would click down, but if the cursor didn't move, it wouldn't generate a full colored circle/line segment, instead it would leave a tiny black square. This was caused by the drawing function being triggered by mousemove and wasn't set to trigger on initial mousedown.
+
+v1.2.2 - v1.2.5 <br>
+Various fixes to the offline usage for the app.
+
+
 <br>
 <br>
 ## Showcase
