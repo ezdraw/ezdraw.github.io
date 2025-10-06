@@ -1,6 +1,6 @@
-{
-  "name": "EZ Write",
-  "short_name": "EZWrite",
+    {
+  "name": "EZ-Draw",
+  "short_name": "EZ-Draw",
   "description": "A simple drawing webapp.",
   "start_url": "draw.html",
   "display": "standalone",
@@ -17,5 +17,7 @@
       "sizes": "512x512",
       "type": "image/png"
     }
-  ]
+  ],
+  "id": "81232138106710584021",
+  "lang": "en"
 }
