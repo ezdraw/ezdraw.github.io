@@ -1,0 +1,5 @@
+EZDraw was tested on a budget, low performance mimrock hp computer. It had consistent, smooth performance.
+
+
+EZDraw was designed to be compatible with Wacom drawing/writing tablets.
+    - EZDraw was tested with a Wacom Intuos S.
