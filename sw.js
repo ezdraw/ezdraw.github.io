@@ -1,30 +1,37 @@
-// sw.js - Service Worker for EZ Write PWA
-const CACHE_NAME = 'ez-write-cache-v1';
-const URLS_TO_CACHE = [
-  'draw.html',
-  'ez.png',
-  'manifest.webmanifest'
-];
+const CACHE_NAME = 'cool-cache';
 
+// Add whichever assets you want to pre-cache here:
+const PRECACHE_ASSETS = [
+    '/assets/',
+    '/src/'
+]
+
+// Listener for the install event - pre-caches our assets list on service worker install.
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(URLS_TO_CACHE))
-  );
+    event.waitUntil((async () => {
+        const cache = await caches.open(CACHE_NAME);
+        cache.addAll(PRECACHE_ASSETS);
+    })());
 });
 
 self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    )
-  );
+  event.waitUntil(self.clients.claim());
 });
 
 self.addEventListener('fetch', event => {
-  event.respondWith(
-    caches.match(event.request).then(response => {
-      return response || fetch(event.request);
-    })
-  );
+  event.respondWith(async () => {
+      const cache = await caches.open(CACHE_NAME);
+
+      // match the request to our cache
+      const cachedResponse = await cache.match(event.request);
+
+      // check if we got a valid response
+      if (cachedResponse !== undefined) {
+          // Cache hit, return the resource
+          return cachedResponse;
+      } else {
+        // Otherwise, go to the network
+          return fetch(event.request)
+      };
+  });
 });
