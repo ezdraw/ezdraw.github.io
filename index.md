@@ -18,7 +18,7 @@ Various fixes to the offline usage for the app.
 
 The cloud software comes packed with amazing state of the art CaineTech smoothing! Optional levels as well as an option to completely disable.
 
-![drawing.jpeg](https://ezdraw.github.io/drawing.jpeg/)
+![drawing.jpeg](https://ezdraw.github.io/drawing.jpeg)
 Note that this image was taken without full anti-aliasing.
 
 ## Try the native drawing WebApp
