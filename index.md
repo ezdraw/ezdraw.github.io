@@ -35,5 +35,5 @@ Go to raw and copy/drag into your bookmarks bar. You can also copy the text and 
 You can also copy from below.
 
 ```
-javascript: fetch("https://raw.githubusercontent.com/ColaCaine/ez-write/refs/heads/main/bookmarklet.js").then(r => r.text()).then(r => eval(r))
+javascript: fetch("https://raw.githubusercontent.com/ezdraw/ezdraw.github.io/refs/heads/main/bookmarklet.js").then(r => r.text()).then(r => eval(r))
 ```
