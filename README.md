@@ -18,7 +18,7 @@ Various fixes to the offline usage for the app.
 
 The cloud software comes packed with amazing state of the art CaineTech smoothing! Optional levels as well as an option to completely disable.
 
-![web-drawing-screenshot (3)](https://github-production-user-asset-6210df.s3.amazonaws.com/202117867/496136087-51f7dbb5-1114-476b-b74a-3d2d4cd640a9.jpeg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAVCODYLSA53PQK4ZA%2F20251007%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20251007T110728Z&X-Amz-Expires=300&X-Amz-Signature=03babd70289648e1511d3641db06e5d654550178737beb8c3a353b7d1bd40935&X-Amz-SignedHeaders=host)
+![drawing.jpeg](https://ezdraw.github.io/drawing.jpeg/)
 Note that this image was taken without full anti-aliasing.
 
 ## Try the native drawing WebApp
