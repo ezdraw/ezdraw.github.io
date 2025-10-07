@@ -40,3 +40,4 @@ You can also copy from below.
 javascript: fetch("https://raw.githubusercontent.com/ezdraw/ezdraw.github.io/refs/heads/main/bookmarklet.js").then(r => r.text()).then(r => eval(r))
 ```
 [View License](https://ezdraw.github.io/mit)
+[View-License.2](LICENSE)
