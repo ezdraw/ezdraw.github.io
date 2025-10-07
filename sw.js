@@ -13,7 +13,11 @@ const PRECACHE_ASSETS = [
     'manifest.webmanifest',
     'draw.html',
     'ez-512x512.png',
-    'offline.html'
+    'offline.html',
+    'license-info.md',
+    'LICENSE',
+    'offline.html',
+    'index.md'
 ];
 
 self.addEventListener("message", (event) => {
