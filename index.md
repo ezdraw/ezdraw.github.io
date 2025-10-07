@@ -14,7 +14,7 @@ Various fixes to the offline usage for the app.
 <br>
 <br>
  
- ## Showcase
+## Showcase
 
 The cloud software comes packed with amazing state of the art CaineTech smoothing! Optional levels as well as an option to completely disable.
 
