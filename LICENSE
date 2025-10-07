@@ -1,7 +1,8 @@
 Caine-Tech EZ Draw License
 Copyright (c) 2025 EZDraw
 
-Permission is hereby granted to anyone obtaining a copy of the code of the source code for this project, or viewing it via its associated repository, granted to view and only view the code. Permission is granted to use it as reference and inspiration as a base slate for their own projects, but is not to be copied under any circumstances. Forking the repository is permitted only privately, publically. For experimenting with it, one should clone locally. Using pieces of code and references items in this project is allowed with clear creditting, and you must credit EZ Draw for any pieces you may have used. When pushing changes to your project that utilize referenced code or any other resource, commit comment must have a credit (c)EZ Draw.
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
-This license will be enforced.
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
