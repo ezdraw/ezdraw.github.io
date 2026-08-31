@@ -9,6 +9,10 @@ v1.2.1 Simplified html code and fixed a bug where the user would click down, but
 
 v1.2.2 - v1.2.5 <br>
 Various fixes to the offline usage for the app.
+<br>
+<br>
+<br>
+**_Note that EzDraw is built for Chromebooks, made for school students, it likely will not work on other devices._**
 
 
 <br>
@@ -40,4 +44,3 @@ You can also copy from below.
 javascript: fetch("https://raw.githubusercontent.com/ezdraw/ezdraw.github.io/refs/heads/main/bookmarklet.js").then(r => r.text()).then(r => eval(r))
 ```
 [View License](https://ezdraw.github.io/mit)
-[View-License.2](LICENSE)
