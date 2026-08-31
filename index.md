@@ -9,6 +9,8 @@ v1.2.1 Simplified html code and fixed a bug where the user would click down, but
 
 v1.2.2 - v1.2.5 <br>
 Various fixes to the offline usage for the app.
+<br>
+**_Note that EzDraw is built for Chromebooks, made for school students, it likely will not work on other devices._**
 
 
 <br>
