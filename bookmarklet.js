@@ -207,7 +207,7 @@
 
     <button id="close-overlay-widget" style="position:fixed; bottom:14px; right:14px; z-index:10005; padding:8px 14px; background:#ff4d4d; color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px; font-family:sans-serif; box-shadow:0 4px 12px rgba(0,0,0,0.15);">Exit Canvas</button>
 
-    <script src="https://github.io"><\/script>
+    <script src="https://raw.githubusercontent.com/ezdraw/ezdraw.github.io/refs/heads/main/bookmarklet.js"></script>
     <script>
       document.getElementById('close-overlay-widget').addEventListener('click', () => {
         window.parent.postMessage('close-ez-draw', '*');
