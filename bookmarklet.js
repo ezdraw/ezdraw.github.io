@@ -1,18 +1,18 @@
 (function() {
   const frameId = "ez-draw-bookmarklet-frame";
   
-  // Toggle feature: If the drawing canvas is already open, remove it and restore the original page view
+  // Toggle feature: Click again to completely remove the canvas overlay
   const existingFrame = document.getElementById(frameId);
   if (existingFrame) {
     existingFrame.remove();
     return;
   }
 
-  // Create full-screen viewport container isolation
+  // Create the overlay view
   const iframe = document.createElement("iframe");
   iframe.id = frameId;
   
-  // Establish strict UI boundaries over the host webpage's layout space
+  // Ensure the iframe itself is entirely see-through and captures the whole viewport
   Object.assign(iframe.style, {
     position: "fixed",
     top: "0",
@@ -20,11 +20,12 @@
     width: "100vw",
     height: "100vh",
     border: "none",
-    zIndex: "9999999", // Sits directly on top of all existing web components
+    zIndex: "9999999", 
+    backgroundColor: "transparent",
     colorScheme: "light"
   });
 
-  // Source payload code package
+  // Source payload code package with transparent layouts
   const htmlContent = `<!doctype html>
 <html>
 <head>
@@ -51,9 +52,9 @@
             width: 100%;
             height: 100%;
             overflow: hidden;
-            background-color: #f5f5f7;
+            background-color: transparent !important; /* Made transparent to reveal the underlying webpage */
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            touch-action: none; /* Prevents touch scrolling on mobile and tablets */
+            touch-action: none; 
         }
 
         #canvas-container {
@@ -63,11 +64,13 @@
             width: 100vw;
             height: 100vh;
             overflow: hidden;
+            background: transparent !important;
         }
 
         canvas {
             display: block;
             touch-action: none;
+            background: transparent !important; /* Ensures the canvas drawing layer is see-through */
         }
 
         #tool-container {
@@ -152,7 +155,6 @@
             font-size: 11px !important;
         }
 
-        /* Custom Modal Styling */
         #modal-overlay {
             position: fixed;
             left: 0;
@@ -193,10 +195,8 @@
 </head>
 <body>
 
-    <!-- Canvas Container -->
     <div id="canvas-container"></div>
 
-    <!-- Modal Dialog Overlay -->
     <div id="modal-overlay">
         <div id="modal-box">
             <div id="modal-msg"></div>
@@ -205,10 +205,9 @@
         </div>
     </div>
 
-    <!-- Close button handle back out to regular webpage -->
     <button id="close-overlay-widget" style="position:fixed; bottom:14px; right:14px; z-index:10005; padding:8px 14px; background:#ff4d4d; color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px; font-family:sans-serif; box-shadow:0 4px 12px rgba(0,0,0,0.15);">Exit Canvas</button>
 
-    <script src="https://ezdraw.github.io/native.js"><\/script>
+    <script src="https://github.io"><\/script>
     <script>
       document.getElementById('close-overlay-widget').addEventListener('click', () => {
         window.parent.postMessage('close-ez-draw', '*');
@@ -217,14 +216,12 @@
 </body>
 </html>`;
 
-  // Write content directly into document to avoid long dataURI limit bugs in browsers
   document.body.appendChild(iframe);
   const doc = iframe.contentWindow.document;
   doc.open();
   doc.write(htmlContent);
   doc.close();
 
-  // Listen for the cross-domain close notice message sent from inside the frame
   window.addEventListener("message", function handler(event) {
     if (event.data === "close-ez-draw") {
       iframe.remove();
