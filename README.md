@@ -36,13 +36,12 @@ For offline use, you can download the HTML file as it has all dependency's kept 
 ## Adding the bookmarklet
 
 Drag the link below into your bookmarks bar: <br>
-[EzDraw](javascript:(function(){var s=document.createElement('script');s.src='https://raw.githubusercontent.com/ezdraw/ezdraw.github.io/refs/heads/main/bookmarklet.js;})();
-)
+[EzDraw](javascript:(function(){var s=document.createElement('script');s.src='https://raw.githubusercontent.com/ezdraw/ezdraw.github.io/refs/heads/main/bookmarklet.js;})();)
 <br>
 
 ## True offline Single-File html
 Don't want to worry about downloading a PWA, not being able to use it offline if you cleared cache? Well you DON'T have to worry!
-Click the link below to download an html file thta you can open and use offline!
+Click the link below to download an html file thta you can open and use offline! <br>
 <a href="offline.html" download="ezdraw-offline.html">Click Here</a>
 <br>
 <br>
