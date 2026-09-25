@@ -36,7 +36,7 @@ For offline use, you can download the HTML file as it has all dependency's kept 
 ## Adding the bookmarklet
 
 Drag the link below into your bookmarks bar: <br>
-[EzDraw](javascript:(function(){var s=document.createElement('script');s.src='https://raw.githubusercontent.com/ezdraw/ezdraw.github.io/refs/heads/main/bookmarklet.js;})();)
+[EzDraw](javascript:(function(){vars=document.createElement('script');s.src='https://raw.githubusercontent.com/ezdraw/ezdraw.github.io/refs/heads/main/bookmarklet.js}))
 <br>
 
 ## True offline Single-File html
